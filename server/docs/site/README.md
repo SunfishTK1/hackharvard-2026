@@ -13,6 +13,7 @@ Find this guide at **https://hackharvard2026.velroi.com**, at `/opt/apps/README.
 | Clinical trial database | `db.hackharvard2026.velroi.com:5432` (TLS) | `clinical-db` | PostgreSQL 18 + pgvector for the clinical trial project. Read-only browser: https://db.hackharvard2026.velroi.com |
 | Trial manager view | https://trial-manager.hackharvard2026.velroi.com | `clinical-trial-manager-view` | Web UI for trial managers |
 | Server load view | https://load.hackharvard2026.velroi.com | `server-load-view` | Live server load dashboard |
+| Trial ops home | https://ops.hackharvard2026.velroi.com | `ops-home` | Portfolio home for trial managers, live from the clinical trials database |
 | Proxy | ports 80 and 443 | `proxy` | Caddy: routes each address to its app and handles HTTPS |
 
 Each app folder has its own README with app-specific details.

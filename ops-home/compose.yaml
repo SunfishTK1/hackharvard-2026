@@ -1,0 +1,23 @@
+services:
+  web:
+    build: .
+    image: ops-home
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3000"
+    mem_limit: 160m
+    networks:
+      default:
+      web:
+        aliases: [ops-home]
+      clinical-db_default:
+
+networks:
+  web:
+    external: true
+  clinical-db_default:
+    external: true

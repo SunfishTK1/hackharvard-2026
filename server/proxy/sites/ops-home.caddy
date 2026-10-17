@@ -1,0 +1,5 @@
+# Trial Ops portfolio home (classic view), live from the clinical_trials database.
+ops.hackharvard2026.velroi.com {
+	encode zstd gzip
+	reverse_proxy ops-home:3000
+}
