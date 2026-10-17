@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Charles Sprint</title>
+<meta property="og:title" content="Charles Sprint">
+<meta property="og:site_name" content="CHARLES SPRINT">
+<meta property="og:image" content="/og.png">
+<link rel="icon" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:description" content="Row 500 m up the Charles. Tap to stroke, don't rush, top the leaderboard.">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; height: 100dvh; overflow: hidden; background: #fff; color: #000;
+    font: 600 16px/1.3 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+  .hud { position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 12px; right: 12px;
+    display: flex; border: 3px solid #000; background: #fff; }
+  .hud div { flex: 1; padding: 6px 2px; text-align: center; border-right: 3px solid #000; }
+  .hud div:last-child { border-right: 0; }
+  .hud small { display: block; font-size: 10px; letter-spacing: .14em; }
+  .hud b { font-size: 21px; font-variant-numeric: tabular-nums; }
+  #row { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px);
+    transform: translateX(-50%); width: min(72vw, 300px); height: 88px; border: 4px solid #000;
+    background: #fff; font-weight: 900; font-size: 30px; letter-spacing: .25em; box-shadow: 6px 6px 0 #000; }
+  #row.hit { background: #000; color: #fff; transform: translate(calc(-50% + 4px), 4px); box-shadow: 2px 2px 0 #000; }
+  /* Flex + margin:auto centers the card but still lets a tall card scroll in a short sheet. */
+  .panel { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; background: #fff;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: calc(env(safe-area-inset-top) + 20px) 20px calc(env(safe-area-inset-bottom) + 28px); }
+  .card { width: min(100%, 360px); margin: auto 0; flex-shrink: 0; border: 4px solid #000; box-shadow: 8px 8px 0 #000;
+    padding: 22px 20px; text-align: center; }
+  h1 { margin: 0; font-size: 44px; line-height: .92; font-weight: 900; letter-spacing: .02em; }
+  h2 { margin: 18px 0 0; font-size: 13px; letter-spacing: .2em; }
+  p { margin: 10px 0 0; font-weight: 500; }
+  .big { font-size: 46px; font-weight: 900; font-variant-numeric: tabular-nums; margin-top: 6px; }
+  button { font: inherit; color: #000; cursor: pointer; }
+  .btn { display: block; width: 100%; margin-top: 14px; padding: 14px; border: 3px solid #000; background: #fff;
+    font-weight: 900; font-size: 18px; letter-spacing: .2em; }
+  .btn:active { background: #000; color: #fff; }
+  input { display: block; width: 100%; margin-top: 12px; padding: 12px; border: 3px solid #000; border-radius: 0;
+    font: inherit; font-size: 17px; text-align: center; color: #000; background: #fff; }
+  ol { margin: 8px 0 0; padding: 0; list-style: none; counter-reset: n; text-align: left; font-variant-numeric: tabular-nums; }
+  li { counter-increment: n; display: flex; gap: 10px; padding: 6px 2px; border-bottom: 2px solid #000; }
+  li::before { content: counter(n); width: 1.4em; font-weight: 900; }
+  li span:first-of-type { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li.me { background: #000; color: #fff; }
+  .empty { margin-top: 8px; font-weight: 500; }
+  #call { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%) rotate(-4deg); background: #000; color: #fff;
+    padding: 8px 18px; font-weight: 900; font-size: 26px; letter-spacing: .14em; white-space: nowrap; }
+  #challenge { font-weight: 900; border: 3px solid #000; padding: 8px; }
+  .hidden { display: none !important; }
+  @media (max-height: 560px) {
+    h1 { font-size: 34px; }
+    .hud b { font-size: 17px; }
+    #row { height: 64px; font-size: 24px; bottom: calc(env(safe-area-inset-bottom) + 12px); }
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="hud">
+  <div><small>TIME</small><b id="time">0:00.0</b></div>
+  <div><small>METERS</small><b id="dist">0</b></div>
+  <div><small>SPLIT /500</small><b id="split">–</b></div>
+</div>
+<button id="row" type="button">ROW</button>
+<div id="call" class="hidden"></div>
+
+<div id="title" class="panel">
+  <div class="card">
+    <h1>CHARLES<br>SPRINT</h1>
+    <p>500 m up the Charles, under the Anderson and Eliot bridges. Tap <b>ROW</b> to take a stroke. Fast, but don't rush the slide.</p>
+    <p id="challenge" class="hidden"></p>
+    <button class="btn" id="start" type="button">START</button>
+    <h2>LEADERBOARD</h2>
+    <ol id="board-title"></ol>
+  </div>
+</div>
+
+<div id="done" class="panel hidden">
+  <div class="card">
+    <h2 style="margin:0">FINISH</h2>
+    <div class="big" id="final">0:00.0</div>
+    <p id="best"></p>
+    <form id="save">
+      <input id="name" maxlength="20" placeholder="Your name or crew" autocomplete="off" required>
+      <button class="btn" type="submit">POST TIME</button>
+    </form>
+    <h2>LEADERBOARD</h2>
+    <ol id="board-done"></ol>
+    <button class="btn" id="again" type="button">ROW AGAIN</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+const COURSE = 500;                         // meters
+const BRIDGES = [{ at: 250, name: "ANDERSON BRIDGE" }, { at: 440, name: "ELIOT BRIDGE" }];
+const PX = 4;                               // pixels per meter
+const $ = (id) => document.getElementById(id);
+const canvas = $("c"), ctx = canvas.getContext("2d");
+let W = 0, H = 0;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  W = innerWidth; H = window.visualViewport ? Math.round(visualViewport.height) : innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener("resize", resize);
+window.visualViewport?.addEventListener("resize", resize);
+resize();
+
+// Diagonal hatching for the riverbanks: texture from line work, not gray.
+const hatch = (() => {
+  const c = document.createElement("canvas"); c.width = c.height = 12;
+  const g = c.getContext("2d");
+  g.strokeStyle = "#000"; g.lineWidth = 1.6;
+  g.beginPath(); g.moveTo(-3, 15); g.lineTo(15, -3); g.moveTo(-3, 3); g.lineTo(3, -3); g.moveTo(9, 15); g.lineTo(15, 9); g.stroke();
+  return ctx.createPattern(c, "repeat");
+})();
+
+// ---- Race state ----
+let mode = "title";          // title | countdown | race | done
+let clock = 0, dist = 0, speed = 0, countdown = 0;
+let lastTap = 0, strokeAge = 9, rushes = 0;
+let puddles = [];
+let finalTime = 0;
+
+// Token of the chat whose card opened the game; posting with it updates that card.
+const CHAT = new URLSearchParams(location.search).get("c") || undefined;
+const fmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
+const river = (m) => ({ x: W / 2 + Math.sin(m / 70) * W * 0.07 + Math.sin(m / 23) * 6, half: Math.min(W * 0.36, 190) });
+const screenY = (m) => H * 0.68 - (m - dist) * PX;
+
+function call(text, ms = 700) {
+  const el = $("call");
+  el.textContent = text; el.classList.remove("hidden");
+  clearTimeout(call.t); call.t = setTimeout(() => el.classList.add("hidden"), ms);
+}
+
+function stroke() {
+  if (mode !== "race") return;
+  const now = performance.now() / 1000;
+  const gap = now - lastTap;
+  lastTap = now;
+  let power = 1;
+  if (gap < 0.2) { power = 0.3; if (++rushes % 3 === 1) call("DON'T RUSH!"); }
+  speed += 3.5 * power * (1 - speed / 16);
+  strokeAge = 0;
+  // Oar puddles stay in the water where the blades came out.
+  const r = river(dist);
+  for (const side of [-1, 1]) puddles.push({ x: r.x + side * 30, m: dist - 6, born: clock });
+  const row = $("row");
+  row.classList.add("hit"); setTimeout(() => row.classList.remove("hit"), 90);
+}
+
+function start() {
+  mode = "countdown"; countdown = 2.2;
+  clock = 0; dist = 0; speed = 0; rushes = 0; puddles = []; lastTap = 0; strokeAge = 9;
+  $("title").classList.add("hidden"); $("done").classList.add("hidden");
+  call("ATTENTION…", 1100);
+}
+
+function finish() {
+  mode = "done";
+  finalTime = clock;
+  $("final").textContent = fmt(finalTime);
+  const best = Number(localStorage.getItem("charles-best") || Infinity);
+  if (finalTime < best) localStorage.setItem("charles-best", String(finalTime));
+  $("best").textContent = finalTime < best ? "Personal best!" : `Your best: ${fmt(best)}`;
+  $("name").value = localStorage.getItem("charles-name") || "";
+  $("save").classList.remove("hidden");
+  setTimeout(() => $("done").classList.remove("hidden"), 600);
+  call("FINISH!", 900);
+  loadBoard();
+}
+
+// ---- Shared leaderboard (same API the Swift app uses; best time per crew) ----
+let board = [];
+function renderBoard(highlight) {
+  for (const id of ["board-title", "board-done"]) {
+    const list = $(id);
+    list.innerHTML = "";
+    if (!board.length) { list.innerHTML = '<div class="empty">No times yet. Be the first.</div>'; continue; }
+    for (const e of board) {
+      const li = document.createElement("li");
+      if (highlight && e.name === highlight.name && e.time === highlight.time) li.className = "me";
+      const name = document.createElement("span"); name.textContent = e.name;
+      const time = document.createElement("span"); time.textContent = fmt(e.time);
+      li.append(name, time); list.append(li);
+    }
+  }
+}
+async function loadBoard() {
+  try {
+    const res = await fetch("./api/leaderboard", { cache: "no-store" });
+    board = res.ok ? (await res.json()).scores : [];
+  } catch { board = []; }
+  renderBoard();
+}
+$("save").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("name").value.trim().slice(0, 20);
+  if (!name) return;
+  localStorage.setItem("charles-name", name);
+  try {
+    const res = await fetch("./api/scores", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, time: finalTime, chat: CHAT }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    board = data.scores;
+    $("best").textContent = (data.record ? "Course record!" : `#${data.rank} on the board.`) + (CHAT ? " Posted to the chat." : "");
+    $("save").classList.add("hidden");
+    renderBoard(data.entry);
+  } catch (err) { $("best").textContent = `Couldn't post: ${err.message || "offline"}`; }
+});
+
+// A friend's time from an iMessage card: ?best=52.3&holder=Ana
+{
+  const q = new URLSearchParams(location.search), best = Number(q.get("best")), holder = (q.get("holder") || "").slice(0, 20);
+  if (best > 0) { $("challenge").textContent = `Beat ${holder || "the chat"}: ${fmt(best)}`; $("challenge").classList.remove("hidden"); }
+}
+
+// ---- Drawing ----
+function drawRiver() {
+  const top = dist + (H * 0.68) / PX + 10, bottom = dist - (H * 0.32) / PX - 10;
+  const left = [], right = [];
+  for (let m = bottom; m <= top; m += 3) {
+    const r = river(m), y = screenY(m);
+    left.push([r.x - r.half, y]); right.push([r.x + r.half, y]);
+  }
+  // Hatched land on both sides.
+  ctx.fillStyle = hatch;
+  ctx.beginPath(); ctx.moveTo(0, H); left.forEach(([x, y]) => ctx.lineTo(x, y)); ctx.lineTo(0, -10); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(W, H); right.forEach(([x, y]) => ctx.lineTo(x, y)); ctx.lineTo(W, -10); ctx.closePath(); ctx.fill();
+  // White embankment strip, then a heavy bank line.
+  for (const [pts, side] of [[left, -1], [right, 1]]) {
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 16;
+    ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x + side * 8, y) : ctx.moveTo(x + side * 8, y)); ctx.stroke();
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 4;
+    ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x + side * 16, y) : ctx.moveTo(x + side * 16, y)); ctx.stroke();
+  }
+  // Ripples fixed to the water.
+  ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.lineCap = "round";
+  for (let m = Math.floor(bottom / 7) * 7; m < top; m += 7) {
+    const r = river(m), seed = Math.sin(m * 12.9898) * 43758.5453, f = seed - Math.floor(seed);
+    const x = r.x - r.half + 24 + f * (r.half * 2 - 48), len = 8 + f * 14, y = screenY(m);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + len, y); ctx.stroke();
+  }
+  // Meter marks on the bank.
+  ctx.fillStyle = "#000"; ctx.font = "800 11px Helvetica Neue, Arial, sans-serif"; ctx.textAlign = "left";
+  for (let m = 100; m < COURSE; m += 100) {
+    const y = screenY(m); if (y < -20 || y > H + 20) continue;
+    const r = river(m);
+    ctx.fillRect(r.x + r.half - 14, y - 1.5, 14, 3);
+    labelBox(`${m} M`, r.x + r.half + 22, y);
+  }
+}
+
+function labelBox(text, x, y) {
+  const w = ctx.measureText(text).width + 10;
+  if (x + w > W - 4) x = W - 4 - w;
+  ctx.fillStyle = "#fff"; ctx.fillRect(x, y - 9, w, 18);
+  ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.strokeRect(x, y - 9, w, 18);
+  ctx.fillStyle = "#000"; ctx.fillText(text, x + 5, y + 4);
+}
+
+function drawLines() {
+  // Start: double line. Finish: checkered band.
+  const s = screenY(0), rs = river(0);
+  if (s > -10 && s < H + 10) {
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 3;
+    for (const d of [0, 7]) { ctx.beginPath(); ctx.moveTo(rs.x - rs.half, s + d); ctx.lineTo(rs.x + rs.half, s + d); ctx.stroke(); }
+  }
+  const f = screenY(COURSE), rf = river(COURSE);
+  if (f > -30 && f < H + 30) {
+    const size = 12, n = Math.ceil((rf.half * 2) / size);
+    for (let i = 0; i < n; i++) for (let j = 0; j < 2; j++) {
+      ctx.fillStyle = (i + j) % 2 ? "#fff" : "#000";
+      ctx.fillRect(rf.x - rf.half + i * size, f - size * (j + 1), size, size);
+    }
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 3; ctx.strokeRect(rf.x - rf.half, f - size * 2, rf.half * 2, size * 2);
+    ctx.font = "900 13px Helvetica Neue, Arial, sans-serif"; labelBox("FINISH", rf.x - rf.half - 64, f - size);
+  }
+}
+
+function drawBridge(b) {
+  const y = screenY(b.at); if (y < -80 || y > H + 80) return;
+  const r = river(b.at), deck = 34, x0 = r.x - r.half - 30, x1 = r.x + r.half + 30;
+  // Solid black deck with three white arches cut out of its downstream face.
+  ctx.fillStyle = "#000"; ctx.fillRect(x0, y - deck, x1 - x0, deck);
+  ctx.fillStyle = "#fff";
+  const spans = 3, span = (r.half * 2) / spans;
+  for (let i = 0; i < spans; i++) {
+    const cx = r.x - r.half + span * (i + 0.5);
+    ctx.beginPath(); ctx.ellipse(cx, y, span * 0.38, deck * 0.62, 0, Math.PI, 0); ctx.fill();
+  }
+  // Railings: thin white lines along the deck.
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x0, y - deck + 5); ctx.lineTo(x1, y - deck + 5); ctx.stroke();
+  ctx.font = "900 11px Helvetica Neue, Arial, sans-serif";
+  labelBox(b.name, r.x - ctx.measureText(b.name).width / 2 - 5, y - deck - 16);
+}
+
+function drawPuddles() {
+  ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+  puddles = puddles.filter((p) => clock - p.born < 1.2);
+  for (const p of puddles) {
+    const age = clock - p.born, y = screenY(p.m);
+    ctx.beginPath(); ctx.arc(p.x, y, 2 + age * 6, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+function drawBoat() {
+  const r = river(dist), x = r.x, y = H * 0.68, len = 18 * PX;
+  // Wake: two black lines trailing back from the stern.
+  const wake = Math.min(1, speed / 9) * 90;
+  if (wake > 4) {
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 3, y + len / 2); ctx.lineTo(x - 3 - wake * 0.35, y + len / 2 + wake);
+    ctx.moveTo(x + 3, y + len / 2); ctx.lineTo(x + 3 + wake * 0.35, y + len / 2 + wake); ctx.stroke();
+  }
+  // Oars: drive sweeps the blades toward the stern, recovery brings them back.
+  const t = strokeAge, drive = 0.22, recover = 0.55;
+  let a;
+  if (t < drive) a = -0.75 + (t / drive) * 1.35;                       // catch → finish
+  else if (t < drive + recover) a = 0.6 - ((t - drive) / recover) * 1.35;
+  else a = -0.75;
+  ctx.lineCap = "round";
+  for (let i = 0; i < 8; i++) {
+    const side = i % 2 ? 1 : -1, oy = y - len / 2 + 14 + i * ((len - 26) / 7);
+    const tipX = x + side * 34 * Math.cos(a * 0.6), tipY = oy + 34 * Math.sin(a) * 0.55;
+    ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x + side * 4, oy); ctx.lineTo(tipX, tipY); ctx.stroke();
+    ctx.fillStyle = "#000"; ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(Math.atan2(tipY - oy, tipX - x));
+    ctx.fillRect(-6, -2.5, 9, 5); ctx.restore();
+  }
+  // Hull: a white lens with a heavy outline; rowers and cox as black dots.
+  ctx.fillStyle = "#fff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y - len / 2);
+  ctx.quadraticCurveTo(x + 9, y, x, y + len / 2);
+  ctx.quadraticCurveTo(x - 9, y, x, y - len / 2);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#000";
+  for (let i = 0; i < 8; i++) { ctx.beginPath(); ctx.arc(x, y - len / 2 + 14 + i * ((len - 26) / 7), 2.6, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillRect(x - 3, y + len / 2 - 9, 6, 6);                           // cox
+}
+
+// ---- Loop ----
+let prev = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - prev) / 1000); prev = now;
+  if (mode === "countdown") {
+    countdown -= dt;
+    if (countdown <= 0) { mode = "race"; call("ROW!", 600); }
+  } else if (mode === "race") {
+    clock += dt;
+    speed *= Math.exp(-0.55 * dt);
+    dist += speed * dt;
+    strokeAge += dt;
+    if (dist >= COURSE) { dist = COURSE; finish(); }
+  } else if (mode === "done") {
+    speed *= Math.exp(-1.2 * dt); dist += speed * dt; strokeAge += dt;
+  }
+  $("time").textContent = fmt(mode === "done" ? finalTime : clock);
+  $("dist").textContent = Math.min(COURSE, Math.floor(dist));
+  $("split").textContent = speed > 0.5 ? fmt(Math.min(599, 500 / speed)).replace(/\.\d$/, "") : "–";
+
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  drawRiver(); drawLines(); drawPuddles(); drawBoat(); BRIDGES.forEach(drawBridge);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---- Input ----
+$("row").addEventListener("pointerdown", (e) => { e.preventDefault(); stroke(); });
+canvas.addEventListener("pointerdown", (e) => { e.preventDefault(); stroke(); });
+addEventListener("keydown", (e) => { if (e.code === "Space") { e.preventDefault(); if (mode === "race") stroke(); } });
+$("start").addEventListener("click", start);
+$("again").addEventListener("click", start);
+loadBoard();
+</script>
+</body>
+</html>

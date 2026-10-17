@@ -1,0 +1,30 @@
+# Charles Sprint: the iMessage agent plus the web game and leaderboard API on port 3000.
+# The shared proxy reaches it as `charles-sprint` on the `web` network; no host ports.
+services:
+  app:
+    build: .
+    image: charles-sprint
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3000"
+      PUBLIC_URL: https://sprint.hackharvard2026.velroi.com
+      # Shared line for LastLight's contact card when a user's assigned number can't be looked up.
+      IMESSAGE_LINE: "+14156056081"
+    volumes:
+      - data:/app/.data
+    mem_limit: 256m
+    networks:
+      default:
+      web:
+        aliases: [charles-sprint]
+
+networks:
+  web:
+    external: true
+
+volumes:
+  data:

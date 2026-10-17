@@ -3,7 +3,13 @@
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join } from "node:path";
+import { TOKEN } from "./chat-cards.ts";
 import { cleanName, cleanTime, type Leaderboard } from "./leaderboard.ts";
+
+export interface ServerHooks {
+  /** A score posted from a game opened on a chat's card (`chat` is the card's token). */
+  onScore?: (chat: string, result: { name: string; time: number; record: boolean; improved: boolean }) => void;
+}
 
 const PUBLIC_DIR = join(import.meta.dirname, "..", "public");
 const STATIC: Record<string, string> = {
@@ -23,9 +29,9 @@ const TYPES: Record<string, string> = {
 const POSTS_PER_MINUTE = 12;
 const posts = new Map<string, number[]>();
 
-export function startServer(board: Leaderboard, port: number) {
+export function startServer(board: Leaderboard, port: number, hooks: ServerHooks = {}) {
   const server = createServer((req, res) => {
-    handle(board, req, res).catch((error) => {
+    handle(board, hooks, req, res).catch((error) => {
       console.error("request failed", req.method, req.url, error);
       if (!res.headersSent) json(res, 500, { error: "server error" });
       else res.end();
@@ -35,7 +41,7 @@ export function startServer(board: Leaderboard, port: number) {
   return server;
 }
 
-async function handle(board: Leaderboard, req: IncomingMessage, res: ServerResponse) {
+async function handle(board: Leaderboard, hooks: ServerHooks, req: IncomingMessage, res: ServerResponse) {
   const { pathname } = new URL(req.url ?? "/", "http://localhost");
 
   if (pathname === "/healthz") return json(res, 200, { ok: true });
@@ -52,6 +58,8 @@ async function handle(board: Leaderboard, req: IncomingMessage, res: ServerRespo
     if (!name || !time) return json(res, 400, { error: "need a name and a race time" });
     const result = await board.submit(name, time);
     console.log(`score: ${time}s, rank ${result.rank}${result.record ? " (record)" : ""}`);
+    const chat = typeof body?.chat === "string" && TOKEN.test(body.chat) ? body.chat : undefined;
+    if (chat) hooks.onScore?.(chat, { name, time, record: result.record, improved: result.improved });
     return json(res, 200, { ...result, scores: board.top(10), total: board.size });
   }
 

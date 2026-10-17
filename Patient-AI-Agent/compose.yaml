@@ -1,0 +1,31 @@
+# The patient assistant: mini-apps on 3010 (proxied at patient.hackharvard2026.velroi.com) and
+# the internal line router on 3011, which other bots on the shared iMessage line (Charles Sprint)
+# reach as patient-assistant:3011 on the `web` network. Postgres is clinical-db's `postgres`.
+services:
+  app:
+    build: .
+    image: patient-assistant
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3010"
+      ROUTER_PORT: "3011"
+      PUBLIC_URL: https://patient.hackharvard2026.velroi.com
+      TIMEZONE: America/New_York
+      # Used only if the TypeSafe key is missing: then new chats start when they match this.
+      ENGAGE_PATTERN: "\\b(study|studies|trial|trials|migraine|sage|consent|clinical|enroll|qualify)\\b"
+    mem_limit: 320m
+    networks:
+      default:
+      web:
+        aliases: [patient-assistant]
+      clinical-db_default:
+
+networks:
+  web:
+    external: true
+  clinical-db_default:
+    external: true

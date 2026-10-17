@@ -1,0 +1,15 @@
+// Charles Sprint build settings.
+//
+// To run on an iPhone, set your Apple Developer Team ID. Put it in Config/Local.xcconfig
+// (gitignored) so it stays out of the repo:
+//
+//   CHARLES_TEAM_ID = ABCDE12345
+//
+// The same Team ID goes in the server's IMESSAGE_TEAM_ID so the agent's cards open this app.
+
+CHARLES_TEAM_ID =
+CHARLES_BUNDLE_ID = com.velroi.charlessprint
+// Leaderboard API. The $() keeps xcconfig from reading // as a comment.
+CHARLES_API_URL = https:/$()/sprint.hackharvard2026.velroi.com
+
+#include? "Local.xcconfig"

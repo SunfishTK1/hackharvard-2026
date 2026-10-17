@@ -6,7 +6,7 @@ import pg from "pg";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DIST_DIR = join(process.cwd(), "dist");
-const MODEL_ID = "claude-haiku-5-5";
+const MODEL_ID = "claude-sonnet-5-5";
 
 function loadEnvVars(): Record<string, string | undefined> {
   const candidates = [
@@ -110,7 +110,7 @@ export interface AgentTableResponse {
   rows: Array<Record<string, string | number | boolean | null>>;
 }
 
-const SYSTEM_PROMPT = `You are the Prod Trial Manager AI Agent (running on Claude Haiku 5.5).
+const SYSTEM_PROMPT = `You are the Prod Trial Manager AI Agent (running on Claude Sonnet 5.5).
 Whenever the Trial Manager sends an instruction or question, you respond with ONE JSON object that renders a clean, high-contrast, easy-to-read data table on the center screen.
 
 Reply with ONLY valid JSON (no Markdown code fences, no commentary before or after) matching this exact schema:
@@ -185,7 +185,7 @@ async function generateAgentTable(prompt: string): Promise<AgentTableResponse> {
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`Claude Haiku 5.5 API error (${response.status}): ${errText}`);
+    throw new Error(`Claude Sonnet 5.5 API error (${response.status}): ${errText}`);
   }
 
   const data = (await response.json()) as {
@@ -205,7 +205,7 @@ async function generateAgentTable(prompt: string): Promise<AgentTableResponse> {
     subtitle: String(parsed.subtitle ?? `Generated for: "${prompt}"`),
     summary: String(parsed.summary ?? ""),
     model: data.model ?? MODEL_ID,
-    sourceLabel: String(parsed.sourceLabel ?? "LIVE CLINICAL-DB · HAIKU 5.5"),
+    sourceLabel: String(parsed.sourceLabel ?? "LIVE CLINICAL-DB · SONNET 5.5"),
     metrics: Array.isArray(parsed.metrics)
       ? (parsed.metrics as AgentTableResponse["metrics"])
       : [],

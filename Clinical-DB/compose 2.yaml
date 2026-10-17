@@ -1,0 +1,93 @@
+# Clinical trial database: Postgres 18 + pgvector, dbmate migrations, and a read-only web browser.
+#   postgres  — the database. Published on :5432; outside connections must use TLS and a role password.
+#   migrate   — dbmate, run on demand: docker compose run --rm migrate up
+#   ui        — pgweb, a read-only browser at https://db.hackharvard2026.velroi.com (behind the shared proxy)
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg18-trixie
+    restart: unless-stopped
+    entrypoint: ["/docker/start.sh"]
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/var/lib/postgresql/tls/server.crt
+      - -c
+      - ssl_key_file=/var/lib/postgresql/tls/server.key
+      - -c
+      - hba_file=/docker/pg_hba.conf
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - max_connections=60
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - log_min_duration_statement=1000
+    env_file: .env
+    environment:
+      POSTGRES_DB: clinical_trials
+      TLS_HOSTNAME: db.hackharvard2026.velroi.com
+      TLS_IP: 74.208.206.131
+    ports:
+      # Also needs TCP 5432 allowed in the IONOS Cloud Panel firewall policy for outside access.
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - pgsocket:/var/run/postgresql
+      - ./docker:/docker:ro
+      - ./db:/db:ro
+      - ./scripts:/scripts:ro
+    shm_size: 256mb
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "clinical_trials"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2.36.0
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Connects as the superuser over the shared Unix socket, so migrations can create extensions and roles.
+      DATABASE_URL: postgres://postgres@/clinical_trials?socket=/var/run/postgresql&sslmode=disable
+      DBMATE_MIGRATIONS_DIR: /db/migrations
+      DBMATE_NO_DUMP_SCHEMA: "true"
+    volumes:
+      - ./db:/db:ro
+      - pgsocket:/var/run/postgresql
+    command: ["up"]
+
+  ui:
+    image: sosedoff/pgweb:0.17.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["--bind=0.0.0.0", "--listen=8081", "--readonly"]
+    environment:
+      PGWEB_DATABASE_URL: postgres://analyst:${ANALYST_PASSWORD}@postgres:5432/clinical_trials?sslmode=require
+      PGWEB_AUTH_USER: ${PGWEB_USER}
+      PGWEB_AUTH_PASS: ${PGWEB_PASSWORD}
+    mem_limit: 128m
+    networks:
+      default:
+      web:
+        aliases: [clinical-db-ui]
+
+networks:
+  web:
+    external: true
+
+volumes:
+  pgdata:
+  pgsocket:

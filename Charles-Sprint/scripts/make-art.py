@@ -19,12 +19,17 @@ def font(size, bold=True):
     return ImageFont.truetype(FONT, size, index=1 if bold else 0)
 
 
-def scene(w, h, s, title=True):
-    """River, banks, bridge and an eight. `s` scales line widths."""
+def scene(w, h, s, title=True, label=True):
+    """River, banks, bridge and an eight. `s` scales line widths.
+
+    With label=False the left side is left empty for the server to draw the live leaderboard on.
+    """
     img = Image.new("RGB", (w, h), WHITE)
     d = ImageDraw.Draw(img)
-    cx = lambda y: w / 2 + math.sin(y / (h * 0.35)) * w * 0.06
-    half = w * 0.30
+    # With a title box on the left, the river runs right of center so the boat stays visible.
+    mid = w * (0.68 if title else 0.5)
+    cx = lambda y: mid + math.sin(y / (h * 0.35)) * w * 0.04
+    half = w * (0.22 if title else 0.30)
     # Hatched banks.
     for k in range(-h, w + h, int(12 * s)):
         d.line([(k, h), (k + h, 0)], fill=BLACK, width=max(1, int(1.6 * s)))
@@ -48,7 +53,7 @@ def scene(w, h, s, title=True):
         d.pieslice([ax - span * 0.38, by - deck * 0.62, ax + span * 0.38, by + deck * 0.62], 180, 360, fill=WHITE)
     d.line([(x0, by - deck + 5 * s), (x1, by - deck + 5 * s)], fill=WHITE, width=int(2 * s))
     # The eight, mid-stroke.
-    bx, boy, ln = cx(h * 0.70), h * 0.70, min(h * 0.42, 72 * s * 1.6)
+    bx, boy, ln = cx(h * 0.66) + (w * 0.07 if title else 0), h * 0.66, min(h * 0.42, 72 * s * 1.6)
     for i in range(8):
         side = 1 if i % 2 else -1
         oy = boy - ln / 2 + 14 * s + i * ((ln - 26 * s) / 7)
@@ -62,7 +67,7 @@ def scene(w, h, s, title=True):
         oy = boy - ln / 2 + 14 * s + i * ((ln - 26 * s) / 7)
         r = 2.6 * s
         d.ellipse([bx - r, oy - r, bx + r, oy + r], fill=BLACK)
-    if title:
+    if title and label:
         f1, f2 = font(int(64 * s)), font(int(20 * s))
         lines = ["CHARLES", "SPRINT"]
         tw = max(d.textlength(t, font=f1) for t in lines)
@@ -114,6 +119,7 @@ def main():
     public = ROOT / "public"
     public.mkdir(exist_ok=True)
     scene(1200, 800, 2.0).save(public / "card.jpg", quality=88)
+    scene(1200, 800, 2.0, label=False).save(public / "card-bg.jpg", quality=90)
     scene(1200, 630, 1.7).save(public / "og.png")
     icon(512).save(public / "icon.png")
 

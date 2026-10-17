@@ -27,6 +27,14 @@ alter role manager_agent login password :'manager_agent_password' connection lim
 alter role analyst       login password :'analyst_password'       connection limit 10 bypassrls;
 grant app_owner to developer;
 
+-- The patient assistant (Patient-AI-Agent) role, when its password is configured.
+\getenv patient_assistant_password PATIENT_ASSISTANT_PASSWORD
+\if :{?patient_assistant_password}
+  select 'create role patient_assistant nologin' where not exists (select from pg_roles where rolname = 'patient_assistant') \gexec
+  alter role patient_assistant login password :'patient_assistant_password' connection limit 20;
+  alter role patient_assistant set statement_timeout = '10s';
+\endif
+
 -- Guard rails for model-written SQL and for the read-only role.
 alter role patient_agent set statement_timeout = '5s';
 alter role manager_agent set statement_timeout = '15s';

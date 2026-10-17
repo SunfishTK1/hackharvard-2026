@@ -1,0 +1,5 @@
+# Charles Sprint: web game, card art and leaderboard API behind the iMessage mini app.
+sprint.hackharvard2026.velroi.com, sprint.74-208-206-131.sslip.io {
+	encode zstd gzip
+	reverse_proxy charles-sprint:3000
+}
