@@ -1,0 +1,6 @@
+# Patient AI Agent: the iMessage study assistant's mini-apps (prescreen, e-consent, scheduler,
+# check-ins). Only port 3010 is public; the line router on 3011 stays on the Docker network.
+patient.hackharvard2026.velroi.com, patient.74-208-206-131.sslip.io {
+	encode zstd gzip
+	reverse_proxy patient-assistant:3010
+}

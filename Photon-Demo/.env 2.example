@@ -1,0 +1,21 @@
+# Copy to Photon-Demo/.env, or leave these in the repo-root .env.
+# The root names in parentheses work too, so the existing hackharvard-2026/.env needs no changes.
+
+# Photon 2.0 beta (https://app.beta.photon.codes): project key needs project:read and project:write
+PHOTON_API_KEY=pho_sk_...          # (photon_20_beta_key)
+PHOTON_PROJECT_ID=pho_prj_...      # (photon_project_id) Settings → Project ID
+
+# Claude
+ANTHROPIC_API_KEY=sk-ant-...       # (Anthropic_API_Key)
+
+# Optional
+# AGENT_MODEL=claude-haiku-5-5
+# AGENT_EFFORT=low                 # low | medium | high | xhigh | max
+# HISTORY_LIMIT=20                 # earlier messages the model sees, 0 to 200
+# ALLOWED_SENDERS=+14155550123,me@icloud.com   # empty answers anyone
+# TIMEZONE=America/New_York        # for "remind me at 5pm"
+
+# Mini-apps
+# MINI_APPS_URL=https://apps.hackharvard2026.velroi.com   # public URL in texted links (default http://localhost:3000)
+# MINI_APP_EFFORT=medium           # builder effort; high is slower but more polished
+# PORT=3000                        # built-in web server

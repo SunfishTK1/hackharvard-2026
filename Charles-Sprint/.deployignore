@@ -1,0 +1,2 @@
+# Paths rsync skips when server/deploy.sh ships this app. The film is rendered locally.
+/film/

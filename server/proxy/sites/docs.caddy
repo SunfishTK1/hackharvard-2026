@@ -1,0 +1,5 @@
+# The server guide (server/docs), at the bare domain.
+hackharvard2026.velroi.com, docs.hackharvard2026.velroi.com {
+	encode zstd gzip
+	reverse_proxy server-docs:80
+}

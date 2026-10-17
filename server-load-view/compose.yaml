@@ -1,0 +1,17 @@
+services:
+  web:
+    build: .
+    image: server-load-view
+    restart: unless-stopped
+    init: true
+    environment:
+      PORT: "3000"
+    mem_limit: 128m
+    networks:
+      default:
+      web:
+        aliases: [server-load-view]
+
+networks:
+  web:
+    external: true

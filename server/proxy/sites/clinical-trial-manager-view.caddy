@@ -1,0 +1,5 @@
+# Clinical Trial Manager View UI (black & white Trial Manager View with Prod Agentic/Classic toggle).
+trial-manager.hackharvard2026.velroi.com, trial-manager.74-208-206-131.sslip.io {
+	encode zstd gzip
+	reverse_proxy clinical-trial-manager-view:3000
+}

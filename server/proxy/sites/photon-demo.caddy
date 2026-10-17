@@ -1,0 +1,6 @@
+# Mini-apps built by the iMessage agent (Photon-Demo). The sslip.io name is kept so links
+# already texted to people keep working.
+apps.hackharvard2026.velroi.com, apps.74-208-206-131.sslip.io {
+	encode zstd gzip
+	reverse_proxy photon-demo:3000
+}

@@ -1,0 +1,28 @@
+# The iMessage agent. It connects out to Photon and Claude, and serves the mini-apps it
+# builds on port 3000 inside Docker. The shared proxy reaches it as `photon-demo` on the
+# `web` network; no ports are published on the host.
+services:
+  agent:
+    build: .
+    image: photon-demo-agent
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3000"
+    volumes:
+      - agent-data:/app/.data
+    mem_limit: 256m
+    networks:
+      default:
+      web:
+        aliases: [photon-demo]
+
+networks:
+  web:
+    external: true
+
+volumes:
+  agent-data:
