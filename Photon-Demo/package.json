@@ -1,0 +1,29 @@
+{
+  "name": "photon-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "iMessage AI agent on Photon 2.0 (beta) with Claude Haiku 5.5",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/agent.ts",
+    "dev": "node --watch src/agent.ts",
+    "doctor": "node src/scripts/doctor.ts",
+    "assign-line": "node src/scripts/assign-line.ts",
+    "send": "node src/scripts/send.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@photon-ai/api": "0.5.0",
+    "socket.io-client": "^4.8.4",
+    "spectrum-ts": "^12.11.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  }
+}
