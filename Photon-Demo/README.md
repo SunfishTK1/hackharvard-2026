@@ -24,7 +24,7 @@ Text **apps** to see the menu. Claude decides when to use these tools (`src/tool
 
 | Tool | Try texting | What happens |
 | --- | --- | --- |
-| `build_mini_app` | "build me a dinner poll for my friends" | Claude writes a full single-file web app in the background (`src/miniapps.ts`). The agent hosts it at `https://apps.74-208-206-131.sslip.io/m/<id>/` and texts the link about a minute later. |
+| `build_mini_app` | "build me a dinner poll for my friends" | Claude writes a full single-file web app in the background (`src/miniapps.ts`). The agent hosts it at `https://apps.hackharvard2026.velroi.com/m/<id>/` and texts the link about a minute later. |
 | `edit_mini_app` | "make the poll buttons bigger" | Rebuilds that app at the same link and keeps its saved data. Only the person who asked for the app can change it. |
 | `set_reminder` | "remind me in 20 min to stretch" | Saved in `.data/reminders.json`; the agent texts at that time, even after a restart. |
 | (chat games) | "let's play 20 questions" | Claude runs the game in the conversation. |

@@ -1,7 +1,7 @@
 # Clinical trial database: Postgres 18 + pgvector, dbmate migrations, and a read-only web browser.
 #   postgres  — the database. Published on :5432; outside connections must use TLS and a role password.
 #   migrate   — dbmate, run on demand: docker compose run --rm migrate up
-#   ui        — pgweb, a read-only browser at https://db.74-208-206-131.sslip.io (behind the shared proxy)
+#   ui        — pgweb, a read-only browser at https://db.hackharvard2026.velroi.com (behind the shared proxy)
 services:
   postgres:
     image: pgvector/pgvector:0.8.7-pg18-trixie
@@ -32,7 +32,7 @@ services:
     env_file: .env
     environment:
       POSTGRES_DB: clinical_trials
-      TLS_HOSTNAME: db.74-208-206-131.sslip.io
+      TLS_HOSTNAME: db.hackharvard2026.velroi.com
       TLS_IP: 74.208.206.131
     ports:
       # Also needs TCP 5432 allowed in the IONOS Cloud Panel firewall policy for outside access.

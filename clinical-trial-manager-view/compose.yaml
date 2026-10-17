@@ -4,14 +4,20 @@ services:
     image: clinical-trial-manager-view
     restart: unless-stopped
     init: true
+    env_file:
+      - path: .env
+        required: false
     environment:
       PORT: "3000"
-    mem_limit: 128m
+    mem_limit: 192m
     networks:
       default:
       web:
         aliases: [clinical-trial-manager-view]
+      clinical-db_default:
 
 networks:
   web:
+    external: true
+  clinical-db_default:
     external: true

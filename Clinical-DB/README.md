@@ -9,8 +9,8 @@ The shared Postgres database for the clinical trial hackathon project. It holds 
 | | |
 | --- | --- |
 | Database | PostgreSQL 18.6 with pgvector 0.8.7, database `clinical_trials` |
-| Host | `74.208.206.131`, port `5432`, TLS required (`sslmode=require`) |
-| Web browser (read-only) | https://db.74-208-206-131.sslip.io (team login) |
+| Host | `db.hackharvard2026.velroi.com`, port `5432`, TLS required (`sslmode=require`) |
+| Web browser (read-only) | https://db.hackharvard2026.velroi.com (team login) |
 | Demo data | Two fictional trials: NORTHSTAR-2 (migraine, 3 arms) and BREATHE-1 (asthma) |
 
 ## Connect
@@ -18,7 +18,7 @@ The shared Postgres database for the clinical trial hackathon project. It holds 
 Connection strings for every role are in `Clinical-DB/.env`, which isn't in git. Ask a teammate who has it to send it to you privately, and save it as `Clinical-DB/.env`.
 
 ```sh
-psql "postgres://developer:<password>@74.208.206.131:5432/clinical_trials?sslmode=require"
+psql "postgres://developer:<password>@db.hackharvard2026.velroi.com:5432/clinical_trials?sslmode=require"
 ```
 
 ```ts
@@ -105,7 +105,7 @@ docs/ONTOLOGY.md         what everything means
 The database runs on the team server as the Compose project `/opt/apps/clinical-db` (see [../server/README.md](../server/README.md)). Server commands run there:
 
 ```sh
-ssh root@74.208.206.131
+ssh root@hackharvard2026.velroi.com
 cd /opt/apps/clinical-db
 
 docker compose run --rm migrate up      # apply migrations (as superuser)
@@ -126,7 +126,7 @@ To ship changes to compose, config or seed files, run `server/deploy.sh Clinical
 Regenerate the reference schema from the repo root:
 
 ```sh
-ssh root@74.208.206.131 'cd /opt/apps/clinical-db && docker compose exec -T postgres pg_dump -U postgres -d clinical_trials --schema-only --no-owner --no-privileges -n core -n trial -n patient_agent -n clinical -n manager_agent -n analytics' > Clinical-DB/db/schema.sql
+ssh root@hackharvard2026.velroi.com 'cd /opt/apps/clinical-db && docker compose exec -T postgres pg_dump -U postgres -d clinical_trials --schema-only --no-owner --no-privileges -n core -n trial -n patient_agent -n clinical -n manager_agent -n analytics' > Clinical-DB/db/schema.sql
 ```
 
 ### Network access

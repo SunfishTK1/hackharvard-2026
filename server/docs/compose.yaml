@@ -1,0 +1,19 @@
+# The server's guide, published at https://hackharvard2026.velroi.com. A tiny static site:
+# Caddy renders site/README.md into site/index.html, and serves site/AGENTS.md as plain text.
+# It is deployed like any other app, so it doubles as a working example of the conventions.
+services:
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./site:/srv:ro
+    mem_limit: 48m
+    networks:
+      default:
+      web:
+        aliases: [server-docs]
+
+networks:
+  web:
+    external: true

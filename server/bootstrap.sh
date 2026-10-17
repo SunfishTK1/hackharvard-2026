@@ -53,6 +53,22 @@ install -d -m 0755 /opt/apps
 # Apps that serve HTTP join this network so the proxy can reach them by service name.
 docker network inspect web >/dev/null 2>&1 || docker network create web >/dev/null
 
+echo "== Guide for humans and agents"
+# The guide is deployed as /opt/apps/docs (server/deploy.sh server/docs docs); these links make it
+# the first thing anyone sees in /opt/apps. CLAUDE.md is what Claude Code looks for.
+ln -sfn docs/site/README.md /opt/apps/README.md
+ln -sfn docs/site/AGENTS.md /opt/apps/AGENTS.md
+ln -sfn docs/site/AGENTS.md /opt/apps/CLAUDE.md
+cat > /etc/motd <<'MOTD'
+
+  hackharvard2026 team server  ·  https://hackharvard2026.velroi.com
+  Every app: /opt/apps/<name>  ·  addresses: <name>.hackharvard2026.velroi.com
+
+  Read first:  /opt/apps/README.md   how the server works and how to deploy
+               /opt/apps/AGENTS.md   rules for AI agents (also CLAUDE.md)
+
+MOTD
+
 docker --version
 docker compose version
 ufw status | head -1

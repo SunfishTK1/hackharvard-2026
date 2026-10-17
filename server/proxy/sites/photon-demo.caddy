@@ -1,6 +1,6 @@
-# Mini-apps built by the iMessage agent (Photon-Demo). sslip.io resolves this name to the
-# server's IP, so Caddy can get a real HTTPS certificate without owning a domain.
-apps.74-208-206-131.sslip.io {
+# Mini-apps built by the iMessage agent (Photon-Demo). The sslip.io name is kept so links
+# already texted to people keep working.
+apps.hackharvard2026.velroi.com, apps.74-208-206-131.sslip.io {
 	encode zstd gzip
 	reverse_proxy photon-demo:3000
 }

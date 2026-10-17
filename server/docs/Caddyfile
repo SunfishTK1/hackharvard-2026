@@ -1,0 +1,16 @@
+# Plain HTTP inside Docker; the shared proxy adds HTTPS.
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	root * /srv
+	# Only HTML is treated as a template, so Markdown with {{ }} in it is served as written.
+	templates {
+		mime text/html
+	}
+	header /*.md Content-Type "text/plain; charset=utf-8"
+	header Cache-Control "no-cache"
+	file_server
+}
