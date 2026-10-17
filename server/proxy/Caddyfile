@@ -1,0 +1,9 @@
+# Each web app adds one file in sites/, for example sites/myapp.caddy:
+#
+#   myapp.example.com {
+#       reverse_proxy myapp:3000
+#   }
+#
+# where `myapp` is the app's Compose service name on the shared `web` network.
+# Then redeploy the proxy: server/deploy.sh server/proxy proxy
+import sites/*.caddy

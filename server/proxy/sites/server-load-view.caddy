@@ -1,0 +1,5 @@
+# Live Server Load View UI (monochrome black & white with Prod Agentic/Classic toggle).
+load.74-208-206-131.sslip.io {
+	encode zstd gzip
+	reverse_proxy server-load-view:3000
+}

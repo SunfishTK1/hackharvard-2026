@@ -1,0 +1,6 @@
+# Read-only web browser for the clinical trial database (Clinical-DB, pgweb). pgweb asks for the
+# team login (PGWEB_USER / PGWEB_PASSWORD in /opt/apps/clinical-db/.env).
+db.74-208-206-131.sslip.io {
+	encode zstd gzip
+	reverse_proxy clinical-db-ui:8081
+}
