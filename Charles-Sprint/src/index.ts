@@ -1,21 +1,25 @@
-import { Spectrum } from "spectrum-ts";
-import { imessage } from "@spectrum-ts/imessage";
-// Spectrum bridges a single agent loop to many messaging interfaces.
-// Each provider in `providers` adds an interface (terminal TUI, iMessage, …).
-// Docs: https://photon.codes/docs/spectrum-ts
-const app = await Spectrum({
-  projectId: process.env.PROJECT_ID!,
-  projectSecret: process.env.PROJECT_SECRET!,
-  providers: [
-    // imessage
-    imessage.config(),
-  ],
-});
+// Charles Sprint: web server (game, card art, leaderboard API) plus the Spectrum iMessage agent.
+import { setTimeout as sleep } from "node:timers/promises";
+import { runAgent } from "./agent.ts";
+import { config } from "./config.ts";
+import { Leaderboard } from "./leaderboard.ts";
+import { startServer } from "./server.ts";
 
-// `app.messages` is an async iterable. Each tick yields a `space` (the
-// conversation) and an inbound `message`. Reply by awaiting `space.send(...)`.
-for await (const [space, message] of app.messages) {
-  if (message.content.type === "text") {
-    await space.send(`echo: ${message.content.text}`);
+const board = await Leaderboard.open(config.dataDir);
+startServer(board, config.port);
+
+if (!config.projectId || !config.projectSecret) {
+  console.warn("agent: PROJECT_ID / PROJECT_SECRET not set, serving the web game only");
+} else {
+  // Keep the web game and leaderboard up even if the iMessage connection drops.
+  for (;;) {
+    try {
+      await runAgent(board);
+      console.warn("agent: message stream ended, reconnecting in 10s");
+      await sleep(10_000);
+    } catch (error) {
+      console.error("agent: failed, retrying in 30s.", error);
+      await sleep(30_000);
+    }
   }
 }
