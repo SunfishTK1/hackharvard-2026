@@ -1,0 +1,505 @@
+:root {
+  --bg: #ffffff;
+  --fg: #000000;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--fg);
+  background-color: var(--bg);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  color: #000000;
+  padding: 24px 32px;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #000000;
+}
+
+.top-bar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  background: #000000;
+  display: inline-block;
+  animation: pulse-dot 2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* Top-right Prod Logo Toggle */
+.prod-toggle-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.prod-logo-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 14px 6px 6px;
+  border: 2.5px solid #000000;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #000000;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #000000;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  user-select: none;
+}
+
+.prod-logo-toggle:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 #000000;
+}
+
+.prod-logo-toggle:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 #000000;
+}
+
+.prod-logo-track {
+  position: relative;
+  width: 68px;
+  height: 38px;
+  border: 2px solid #000000;
+  border-radius: 999px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  transition: background-color 160ms ease;
+}
+
+.prod-logo-toggle.is-agentic .prod-logo-track {
+  background: #000000;
+}
+
+.prod-logo-thumb {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  color: #000000;
+  transform: translateX(30px);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms ease, color 160ms ease;
+}
+
+.prod-logo-toggle.is-classic .prod-logo-thumb {
+  background: #000000;
+  color: #ffffff;
+  transform: translateX(0);
+}
+
+.prod-logo-svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.prod-logo-toggle.is-classic .prod-logo-node {
+  opacity: 0.35;
+}
+
+.prod-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+  text-align: left;
+}
+
+.prod-brand-label {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.prod-mode-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.prod-mode-option {
+  padding: 2px 6px;
+  border: 1.5px solid transparent;
+}
+
+.prod-mode-option.active {
+  background: #000000;
+  color: #ffffff;
+  border-color: #000000;
+}
+
+.prod-mode-divider {
+  opacity: 0.4;
+}
+
+/* Front stage */
+.front-stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 36px 0;
+}
+
+.hero-card {
+  width: min(100%, 960px);
+  border: 3px solid #000000;
+  background: #ffffff;
+  box-shadow: 10px 10px 0 #000000;
+  padding: 44px 40px;
+  text-align: center;
+}
+
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 2px solid #000000;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: #ffffff;
+  color: #000000;
+}
+
+.app-shell.mode-agentic .mode-badge {
+  background: #000000;
+  color: #ffffff;
+}
+
+.mode-badge-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.view-title {
+  margin-top: 20px;
+  font-size: clamp(38px, 5.5vw, 64px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  text-transform: uppercase;
+}
+
+.view-subtitle {
+  max-width: 620px;
+  margin: 14px auto 0;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: #222222;
+}
+
+.error-banner {
+  margin-top: 20px;
+  padding: 10px 14px;
+  border: 2px solid #000000;
+  background: #000000;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+/* KPI Strip */
+.kpi-strip {
+  margin-top: 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  border: 2px solid #000000;
+  text-align: left;
+}
+
+.kpi-box {
+  padding: 18px 20px;
+  border-right: 2px solid #000000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kpi-box:last-child {
+  border-right: 0;
+}
+
+.kpi-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.kpi-number {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.kpi-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333333;
+}
+
+/* Monochrome Progress Meters */
+.meters-panel {
+  margin-top: 20px;
+  border: 2px solid #000000;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: left;
+}
+
+.meter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meter-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.meter-track {
+  height: 14px;
+  border: 2px solid #000000;
+  background: #ffffff;
+  padding: 2px;
+}
+
+.meter-fill {
+  height: 100%;
+  background: #000000;
+  transition: width 300ms ease;
+}
+
+/* Mode Workspace */
+.mode-frame {
+  margin-top: 24px;
+  border: 2px solid #000000;
+  text-align: left;
+}
+
+.mode-frame-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 2px solid #000000;
+  background: #000000;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.mode-frame-body {
+  padding: 20px;
+  background: #ffffff;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+}
+
+.workspace-cell {
+  border: 2px solid #000000;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cell-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.cell-pill {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  padding: 3px 7px;
+  background: #000000;
+  color: #ffffff;
+}
+
+.cell-meta {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #111111;
+}
+
+/* Sparkline */
+.sparkline-section {
+  margin-top: 18px;
+  border: 2px solid #000000;
+  padding: 14px 16px;
+}
+
+.sparkline-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  margin-bottom: 10px;
+}
+
+.sparkline-bars {
+  height: 64px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  border-bottom: 2px solid #000000;
+  padding-bottom: 2px;
+}
+
+.sparkline-col {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.sparkline-bar {
+  width: 100%;
+  background: #000000;
+  transition: height 250ms ease;
+}
+
+/* Classic Table */
+.classic-table-wrap {
+  overflow-x: auto;
+}
+
+.classic-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.classic-table th,
+.classic-table td {
+  border: 2px solid #000000;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.classic-table th {
+  background: #000000;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.classic-table td:first-child {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.classic-table td:last-child {
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .top-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .prod-toggle-wrapper {
+    justify-content: flex-end;
+  }
+
+  .hero-card {
+    padding: 28px 18px;
+    box-shadow: 6px 6px 0 #000000;
+  }
+
+  .kpi-box {
+    border-right: 0;
+    border-bottom: 2px solid #000000;
+  }
+
+  .kpi-box:last-child {
+    border-bottom: 0;
+  }
+}
