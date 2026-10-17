@@ -25,9 +25,10 @@ ssh_opts=(-o ControlMaster=auto -o "ControlPath=~/.ssh/cm-%C" -o ControlPersist=
 echo "Deploying $app_dir to $target:/opt/apps/$name"
 ssh "${ssh_opts[@]}" "$target" "install -d /opt/apps/$name"
 # Excluded paths are also kept on the server, so the server's .env and data survive --delete.
+# An app can list more paths to skip in a .deployignore file (rsync filter syntax).
 # No -o/-g: files land owned by the server user rather than your local uid.
 rsync -rlptz --delete \
-  --exclude node_modules --exclude .env --exclude .data --exclude .git --exclude .DS_Store \
+  --exclude node_modules --exclude .env --exclude .data --exclude .git --exclude .DS_Store --filter=':- .deployignore' \
   -e "ssh ${ssh_opts[*]}" "$app_dir/" "$target:/opt/apps/$name/"
 # --force-recreate: Compose can keep an old container after a rebuild; a deploy should always run the new image.
 ssh "${ssh_opts[@]}" "$target" "cd /opt/apps/$name && docker compose build && docker compose up -d --force-recreate --remove-orphans && docker image prune -f >/dev/null && docker compose ps"

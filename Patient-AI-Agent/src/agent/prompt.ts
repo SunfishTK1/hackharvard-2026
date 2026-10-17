@@ -3,7 +3,7 @@
 import type { Question } from "../domain/eligibility.ts";
 import { isAsked } from "../domain/eligibility.ts";
 import { PHASE_DEFINITIONS, type CardKind } from "../domain/phases.ts";
-import type { CheckInMeasure, ConsentDocument, TrialSummary } from "../knowledge/types.ts";
+import type { CheckInMeasure, ConsentDocument, StudyListing, TrialSummary } from "../knowledge/types.ts";
 import type { Appointment, Consent, Engagement, Form, Goal, Memory, Person, PlatformState, TranscriptEntry } from "../store.ts";
 import { firstName } from "../store.ts";
 
@@ -26,6 +26,8 @@ export interface TurnContext {
   forms: Pick<Form, "kind" | "status" | "title">[];
   measures: CheckInMeasure[];
   agentInstructions?: string;
+  /** Studies recruiting now, for matching the person to the right one. */
+  studies: StudyListing[];
 }
 
 const CARD_DESCRIPTIONS: Record<CardKind, string> = {
@@ -55,8 +57,15 @@ export function systemPrompt(ctx: TurnContext): string {
     ? `signed v${ctx.consent.version} by ${ctx.consent.signedBy} on ${when(ctx.consent.signedAt!, ctx.timeZone)} (${ctx.consent.method === "passkey" ? "verified with Face ID" : "typed-name verification"})`
     : ctx.consent ? `${ctx.consent.status} (v${ctx.consent.version}, not signed)` : ctx.consentDocument?.signable ? "not sent yet" : "no approved consent form is active yet";
 
+  const others = ctx.studies.filter((s) => s.id !== trial.id);
+  const canSwitch = ["prequalification", "not_eligible", "declined"].includes(e.phase) && others.length > 0;
   const sections = [
-    `You are ${ctx.assistantName}, the study assistant for ${trial.shortTitle} (${trial.title}), texting over iMessage with one person on behalf of the study team. You help people learn about the study, check whether it might fit them, sign the consent form, book their screening visit, and, once enrolled, report how they're doing.`,
+    `You are ${ctx.assistantName}, a clinical research study assistant texting over iMessage with one person on behalf of the study teams. You're helping them with ${trial.shortTitle} (${trial.title}): learning about the study, checking whether it might fit them, signing the consent form, booking their screening visit, and, once enrolled, reporting how they're doing.`,
+    canSwitch
+      ? `# Other studies recruiting now
+${others.map((s) => `- ${s.code}: ${s.condition ?? ""} (${s.title})`).join("\n")}
+If what they're looking for matches one of these better (a condition, a flyer they saw), call choose_study before going further; their prescreen is per study.`
+      : "",
 
     `# Who you're talking to
 Name: ${name ?? "unknown (ask what to call them, then call set_name)"}

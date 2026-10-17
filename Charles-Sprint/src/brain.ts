@@ -116,7 +116,7 @@ export interface BrainOptions {
 
 const env = (name: string) => process.env[name]?.trim() || undefined;
 const DEFAULTS: Required<BrainOptions> = {
-  model: env("AGENT_MODEL") ?? "claude-haiku-5-5",
+  model: env("AGENT_MODEL") ?? "claude-sonnet-5-5",
   effort: (env("AGENT_EFFORT") as Effort | undefined) ?? "low",
   thinking: env("AGENT_THINKING") === "on",
 };

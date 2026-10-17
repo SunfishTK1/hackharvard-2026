@@ -13,6 +13,7 @@ import type { Journey } from "./journey.ts";
 
 export interface ToolContext {
   personId: string;
+  /** The journey the tools act on; choose_study can switch it mid-turn. */
   engagementId: string;
   /** Where tool actions are noted, so later turns remember them. */
   threadId: string;
@@ -55,6 +56,31 @@ export function assistantTools(ctx: ToolContext) {
           return undefined;
         });
         return blocked ?? (await ctx.queueCard(kind));
+      },
+    }),
+
+    betaZodTool({
+      name: "choose_study",
+      description:
+        "Switch which recruiting study you're helping this person with, when what they want matches a different one (for example they mention diabetes and you're on a migraine study). Only before they've passed a prescreen.",
+      inputSchema: z.object({ study_code: z.string().describe("A code from the list of studies recruiting now") }),
+      run: async ({ study_code }) => {
+        const studies = await ctx.knowledge.recruitingStudies();
+        const target = studies.find((s) => s.code.toLowerCase() === study_code.trim().toLowerCase());
+        if (!target) return `No study ${study_code} is recruiting. Recruiting: ${studies.map((s) => `${s.code} (${s.condition})`).join(", ")}.`;
+        return tx(async (q, e) => {
+          if (e.trialId === target.id) return "You're already on that study.";
+          if (!["prequalification", "not_eligible", "declined"].includes(e.phase)) {
+            return `They're in the ${e.phase} phase of their current study; switching would abandon it. Escalate if they want to change studies.`;
+          }
+          const next = await store.createEngagement(q, ctx.personId, target.id);
+          await ctx.journey.syncGoals(q, next);
+          ctx.engagementId = next.id;
+          await note(q, `You switched to the ${target.shortTitle} study (${target.condition}).`);
+          const trial = await ctx.knowledge.trial(target.id);
+          const sites = trial.sites.filter((s) => s.status === "active").map((s) => `${s.name}, ${s.city}`).join("; ");
+          return `Now helping with ${trial.shortTitle}: ${trial.title}. ${trial.summary === trial.title ? "" : trial.summary} ${trial.durationWeeks ? `About ${trial.durationWeeks} weeks.` : ""} Sites: ${sites}. The prescreen and cards are for this study now.`;
+        });
       },
     }),
 

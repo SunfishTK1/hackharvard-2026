@@ -13,7 +13,7 @@ import { Brain, describeError } from "./brain.ts";
 import type { ChannelResolver, Conversation } from "./channel.ts";
 import { Journey } from "./journey.ts";
 import { systemPrompt, toMessages, type TurnContext } from "./prompt.ts";
-import { assistantTools } from "./tools.ts";
+import { assistantTools, type ToolContext } from "./tools.ts";
 
 const FORM_TITLES: Record<CardKind, string> = {
   prescreen: "Pre-screening questions",
@@ -135,7 +135,7 @@ export class Assistant {
     const ctx = await asPerson(personId, (q) => this.context(q, personId));
     if (!ctx) return this.say(conversation, personId, threadId, NOT_RECRUITING);
     const cards: store.Form[] = [];
-    const tools = assistantTools({
+    const toolContext: ToolContext = {
       personId,
       engagementId: ctx.engagement.id,
       threadId,
@@ -144,7 +144,7 @@ export class Assistant {
       queueCard: async (kind) => {
         if (cards.some((f) => f.kind === kind)) return "Already queued.";
         const form = await asPerson(personId, async (q) => {
-          const e = await store.engagement(q, ctx.engagement.id);
+          const e = await store.engagement(q, toolContext.engagementId);
           const reusable = kind === "info" || kind === "document" ? undefined : await store.openFormOfKind(q, e.id, kind);
           if (reusable) return reusable;
           if (kind !== "consent") return store.createForm(q, e, kind, FORM_TITLES[kind], {});
@@ -155,7 +155,8 @@ export class Assistant {
         cards.push(form);
         return `The ${kind} card will appear right after your message.`;
       },
-    });
+    };
+    const tools = assistantTools(toolContext);
 
     let reply: string;
     try {
@@ -169,14 +170,16 @@ export class Assistant {
       const sent = await conversation.sendText(reply);
       await asPerson(personId, async (q) => {
         const id = await store.addMessage(q, { threadId, personId, direction: "outbound", author: "assistant", body: reply, externalId: sent.externalId, model: config.model });
-        if (id) await store.mirrorMessage(q, await store.engagement(q, ctx.engagement.id), id, { direction: "outbound", type: "support", body: reply, externalId: sent.externalId });
+        if (id) await store.mirrorMessage(q, await store.engagement(q, toolContext.engagementId), id, { direction: "outbound", type: "support", body: reply, externalId: sent.externalId });
       });
     }
-    for (const form of cards) await this.deliverCard(conversation, threadId, form, ctx.trial.shortTitle, ctx.questions.length);
+    for (const form of cards) await this.deliverCard(conversation, threadId, form);
   }
 
-  private async deliverCard(conversation: Conversation, threadId: string, form: store.Form, trialName: string, questionCount: number): Promise<void> {
-    const spec = this.spec(form, trialName, false, { questions: questionCount });
+  private async deliverCard(conversation: Conversation, threadId: string, form: store.Form): Promise<void> {
+    const studyId = await asPerson(form.personId, async (q) => (await store.engagement(q, form.engagementId)).trialId);
+    const [trial, questions] = await Promise.all([this.knowledge.trial(studyId), this.knowledge.prescreenQuestions(studyId)]);
+    const spec = this.spec(form, trial.shortTitle, false, { questions: questions.length });
     const ref = await conversation.sendCard(spec);
     await asPerson(form.personId, async (q) => {
       await store.markFormSent(q, form.id, { ...ref, threadId });
@@ -216,17 +219,18 @@ export class Assistant {
     const consent = await store.currentConsent(q, engagement);
     const appointment = await store.upcomingAppointment(q, engagement.id);
     const dueAssessments = await store.dueAssessments(q, engagement);
-    const [trial, questions, consentDocument, measures, agentInstructions] = await Promise.all([
+    const [trial, questions, consentDocument, measures, agentInstructions, studies] = await Promise.all([
       this.knowledge.trial(engagement.trialId),
       this.knowledge.prescreenQuestions(engagement.trialId),
       this.knowledge.consentDocument(engagement.trialId, engagement.siteId),
       this.knowledge.checkInMeasures(engagement.trialId),
       this.knowledge.agentInstructions(engagement.trialId),
+      this.knowledge.recruitingStudies(),
     ]);
     return {
       assistantName: config.assistantName, now: new Date(), timeZone: person.timezone || config.timeZone,
       person, engagement, platform, trial, goals, memories, answers, questions, consentDocument, consent, appointment, dueAssessments,
-      forms, measures, agentInstructions, transcript,
+      forms, measures, agentInstructions, studies, transcript,
     };
   }
 }
