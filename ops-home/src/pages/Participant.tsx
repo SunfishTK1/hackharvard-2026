@@ -1,16 +1,10 @@
 import type { CSSProperties } from "react";
-import type { ParticipantData, SeriesChart } from "../types";
-import { AskButton, BLUE, Crumbs, ParticipantTabs, StudyTabs, Footer, INK, MUTED, PANEL, Source, Stale, Status, Tiles, pillLink, useApi, useSources } from "../ui";
+import type { ParticipantData, ReportedData, SeriesChart } from "../types";
+import { ReportedView } from "./Reported";
+import { AskButton, BLUE, Crumbs, StudyTabs, Footer, INK, MUTED, PANEL, Source, Stale, Status, Tiles, pillLink, useApi, useSources } from "../ui";
 
 const card: CSSProperties = { background: "#FFFFFF", borderRadius: 24, padding: 28, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 };
 const eyebrow: CSSProperties = { fontSize: 15, fontWeight: 600, color: MUTED };
-
-function statusPill(st: string): CSSProperties {
-  const base: CSSProperties = { fontSize: 12, fontWeight: 500, padding: "3px 10px", borderRadius: 980 };
-  if (st === "missed") return { ...base, background: INK, color: "#FFFFFF", fontWeight: 600 };
-  if (st === "upcoming" || st === "open") return { ...base, background: "rgba(0,113,227,0.1)", color: "#0058B0" };
-  return { ...base, background: "rgba(0,0,0,0.06)", color: INK };
-}
 
 function Chart({ ch }: { ch: SeriesChart }) {
   const [x0, x1, yTop, yBase] = [20, 540, 24, 170];
@@ -56,9 +50,10 @@ function Chart({ ch }: { ch: SeriesChart }) {
 
 export default function Participant({ code }: { code: string }) {
   const { data, error, notFound, reload } = useApi<ParticipantData>(`/api/participants/${encodeURIComponent(code)}`);
+  // The day-by-day grid comes from the reported-data endpoint; it replaces the measurements table.
+  const reported = useApi<ReportedData>(`/api/reported/${encodeURIComponent(code)}`);
   const [showSources, toggleSources] = useSources();
   if (!data) return <Status error={error} notFound={notFound} onRetry={reload} what="the participant" />;
-  const grid: CSSProperties = { display: "grid", gridTemplateColumns: "1.7fr 0.6fr 0.7fr 0.8fr 0.9fr 0.7fr 1fr", gap: 12 };
 
   return (
     <main>
@@ -66,10 +61,9 @@ export default function Participant({ code }: { code: string }) {
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise detail-head" style={{ paddingBottom: 28 }}>
         <Crumbs items={data.crumbs} />
-        <ParticipantTabs code={data.code} current="overview" />
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-end", gap: 24 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 600, color: MUTED }}>Participant</div>
+            <div style={{ fontSize: 17, fontWeight: 600, color: MUTED }}>Reported data</div>
             <h1 className="detail-title" style={{ fontVariantNumeric: "tabular-nums" }}>{data.code}</h1>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -100,35 +94,19 @@ export default function Participant({ code }: { code: string }) {
         <Tiles tiles={data.tiles} columns={4} size={48} />
       </section>
 
+      <section aria-labelledby="reported-title" style={{ maxWidth: 1200, margin: "0 auto", padding: "8px 24px 0" }}>
+        <h2 id="reported-title" style={{ margin: 0, fontSize: 28, fontWeight: 600, letterSpacing: "-0.015em" }}>Day by day</h2>
+        <p style={{ margin: "6px 0 0", fontSize: 15, color: MUTED, maxWidth: 760 }}>
+          {data.measurements.heading} Select a day to see the messages exchanged, how each reply was interpreted, and any alerts it raised.
+        </p>
+        <Source show={showSources}>analytics.participant_measurements (one row per expected answer) · day detail: public.messages + public.observations + public.alerts</Source>
+      </section>
+      {reported.data ? <ReportedView data={reported.data} />
+        : <p style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 24px", fontSize: 15, color: MUTED }}>{reported.error ?? "Loading reported data…"}</p>}
+
       <section style={{ background: PANEL, padding: "48px 24px 120px" }}>
         <div className="stagger" style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
           <div style={{ flex: "999 1 600px", minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={card}>
-              <div style={eyebrow}>Measurements</div>
-              <div style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.015em", marginBottom: 8 }}>{data.measurements.heading}</div>
-              <Source show={showSources}>analytics.participant_measurements · status and current value as stored</Source>
-              {data.measurements.rows.length > 0 && (
-                <div style={{ overflowX: "auto" }}>
-                  <div role="table" aria-label="Measurements" style={{ minWidth: 680 }}>
-                    <div role="row" style={{ ...grid, padding: "10px 12px", fontSize: 13, color: MUTED, borderBottom: "1px solid rgba(0,0,0,0.08)" }}>
-                      {["Measure", "Day", "Date", "Due", "Status", "Value", "Source"].map((h) => <span key={h} role="columnheader">{h}</span>)}
-                    </div>
-                    {data.measurements.rows.map((m, i) => (
-                      <div key={i} role="row" className="row" style={{ ...grid, alignItems: "center", minHeight: 48, padding: "0 12px", borderRadius: 14, fontSize: 15, fontVariantNumeric: "tabular-nums" }}>
-                        <span role="cell">{m.measure}</span>
-                        <span role="cell" style={{ color: MUTED }}>{m.day}</span>
-                        <span role="cell" style={{ color: MUTED }}>{m.date}</span>
-                        <span role="cell" style={{ color: MUTED }}>{m.due}</span>
-                        <span role="cell"><span style={statusPill(m.status)}>{m.status}</span></span>
-                        <span role="cell" style={{ fontWeight: 600 }}>{m.value}</span>
-                        <span role="cell" style={{ color: MUTED }}>{m.source}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
             {data.charts.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
                 {data.charts.map((ch) => (
