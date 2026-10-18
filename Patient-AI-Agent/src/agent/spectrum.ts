@@ -1,7 +1,7 @@
 // iMessage through Photon Spectrum. Cards are Spectrum `app` cards: a static layout (rendered
 // image + captions) that opens the mini-app URL full height in Photon's iMessage extension, which
 // works for anyone with iMessage. Cards are updated in place with the session from the send.
-import { app, edit, Spectrum, voice, type Message, type Space } from "spectrum-ts";
+import { app, attachment, edit, Spectrum, voice, type Message, type Space } from "spectrum-ts";
 import { customizedMiniApp, imessage } from "spectrum-ts/providers/imessage";
 import { config } from "../config.ts";
 import { cardImage } from "../cards/image.ts";
@@ -111,6 +111,10 @@ export class SpectrumChannel implements ChannelResolver {
         // The audio is MP3, so Spectrum converts it to m4a, but it uploads under this name, and
         // iMessage goes by the extension: an ".mp3" name on m4a data plays as an empty 00:00 bubble.
         const sent = await space.send(voice(audio, { mimeType: "audio/mpeg", name: "Sage.m4a" }));
+        return { externalId: sent?.id };
+      },
+      sendImage: async (image, name, mimeType) => {
+        const sent = await space.send(attachment(image, { name, mimeType }));
         return { externalId: sent?.id };
       },
       sendCard: async (card) => {

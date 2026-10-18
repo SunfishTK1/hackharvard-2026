@@ -9,6 +9,7 @@ import { isAsked, normalizeAnswer } from "../domain/eligibility.ts";
 import { isStudyView, PHASE_DEFINITIONS, PHASES, type CardKind } from "../domain/phases.ts";
 import type { TrialKnowledge } from "../knowledge/types.ts";
 import * as store from "../store.ts";
+import { danceTool } from "./dance.ts";
 import type { Journey } from "./journey.ts";
 
 export interface ToolContext {
@@ -21,6 +22,8 @@ export interface ToolContext {
   knowledge: TrialKnowledge;
   /** Creates the form and queues its card to send right after the assistant's reply. */
   queueCard(kind: CardKind): Promise<string>;
+  /** Queues the dancing crab (an easter egg) to send right after the reply. */
+  queueDance(): string;
 }
 
 const CARD_KINDS = ["prescreen", "info", "consent", "schedule", "checkin", "document", "study", "symptom", "visit", "week"] as const;
@@ -264,5 +267,7 @@ export function assistantTools(ctx: ToolContext) {
           return "The study team has been asked to follow up.";
         }),
     }),
+
+    danceTool(() => ctx.queueDance()),
   ];
 }

@@ -26,6 +26,7 @@ import { describeError } from "../agent/brain.ts";
 import { config } from "../config.ts";
 import type { OpsAgent } from "./agent.ts";
 import * as computer from "./computer.ts";
+import { OpsCore } from "./core.ts";
 import * as approvals from "./approvals.ts";
 import * as data from "./data.ts";
 import { ops } from "./db.ts";
@@ -244,7 +245,9 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort, followUp
       if (!message) throw new ApiError(400, "Say something first.");
       if (message.length > 4000) throw new ApiError(413, "That's too long for one message.");
       const turn = await core.chat(m, message);
-      return send(res, 200, { reply: { text: turn?.text ?? "", links: (turn?.links ?? []).map((l) => ({ view: l.view, title: l.title, url: l.url })) } });
+      const links = (turn?.links ?? []).map((l) => ({ view: l.view as string, title: l.title, url: l.url }));
+      if (turn?.dance) links.push(OpsCore.danceLink());
+      return send(res, 200, { reply: { text: turn?.text ?? "", links } });
     }
     const view = path.match(/^\/v1\/views\/([a-z]+)$/);
     if (method === "GET" && view) {

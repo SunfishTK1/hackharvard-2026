@@ -12,6 +12,8 @@ export interface Conversation {
   sendText(text: string): Promise<{ externalId?: string }>;
   /** Sends a voice note (MP3), where the channel has them. */
   sendVoice?(audio: Buffer): Promise<{ externalId?: string }>;
+  /** Sends a picture or GIF, where the channel has them. */
+  sendImage?(image: Buffer, name: string, mimeType: string): Promise<{ externalId?: string }>;
   sendCard(card: CardSpec): Promise<CardRef>;
   /** Replaces a card bubble in place. Returns the refreshed ref, or undefined if it couldn't. */
   updateCard(ref: CardRef, card: CardSpec): Promise<CardRef | undefined>;

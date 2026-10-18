@@ -3,6 +3,7 @@
 // (Daytona computers). The iMessage adapter (agent.ts) and the HTTP API other apps use (api.ts, for
 // example the ops website) are thin layers over this, so every surface gets the same agent.
 import { Brain, describeError, withoutNotes } from "../agent/brain.ts";
+import { DANCE, DANCE_QUEUED } from "../agent/dance.ts";
 import { config } from "../config.ts";
 import { Analyst, type AnalysisDone } from "./analyst.ts";
 import { opsCard, type OpsCardText } from "./cards.ts";
@@ -31,6 +32,8 @@ export interface OpsLink {
 export interface OpsTurn {
   text: string;
   links: OpsLink[];
+  /** They asked Trial Ops to dance: the dancing crab goes out after the reply (an easter egg). */
+  dance?: boolean;
 }
 
 export interface OpsHooks {
@@ -87,6 +90,7 @@ export class OpsCore {
   async reply(m: store.Manager, threadId: string, options: { trailingNote?: string; typing?: <T>(work: () => Promise<T>) => Promise<T>; ensureLink?: { view: View; params: Record<string, string> } } = {}): Promise<OpsTurn> {
     const typing = options.typing ?? (<T>(work: () => Promise<T>) => work());
     const links: OpsLink[] = [];
+    let dance = false;
     const tools = opsTools({
       manager: m,
       queueCard: async (view, params, text = {}, query) => {
@@ -95,6 +99,10 @@ export class OpsCore {
         return `Queued: the ${VIEW_TITLES[view].toLowerCase()} card goes out after your reply. Now write the reply itself in words.`;
       },
       askSage: (code, note) => this.askSage(code, note),
+      dance: () => {
+        dance = true;
+        return DANCE_QUEUED;
+      },
       ...(this.analyst ? {
         startAnalysis: (title: string, request: string, machine?: "standard" | "large" | "gpu") => this.analyst!.start(m.id, title, request, machine),
         stopAnalysis: (id: string) => this.analyst!.cancel(m.id, id),
@@ -122,7 +130,13 @@ export class OpsCore {
     if (must && !links.some((l) => l.view === must.view && Object.entries(must.params).every(([k, v]) => l.params[k] === v))) links.push(await this.link(m, must.view, must.params));
     if (text) await store.addMessage(ops, { threadId, direction: "outbound", author: "agent", body: text });
     for (const l of links) await store.addMessage(ops, { threadId, direction: "outbound", author: "agent", kind: "card", body: l.title, link: { view: l.view, title: l.title, url: l.url } });
-    return { text, links };
+    if (dance) await store.addMessage(ops, { threadId, direction: "outbound", author: "agent", kind: "card", body: DANCE.title, link: OpsCore.danceLink() });
+    return { text, links, dance };
+  }
+
+  /** How the dancing crab appears in the chat on every surface (the ops website sets it dancing). */
+  static danceLink() {
+    return { view: "dance", title: DANCE.title, url: `${config.publicUrl}${DANCE.path}` };
   }
 
   /** What the manager says and what Trial Ops answers, in one call (for surfaces without their own transcript handling). */

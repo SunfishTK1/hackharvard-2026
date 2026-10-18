@@ -4,6 +4,7 @@
 import type { Assistant } from "../agent/assistant.ts";
 import type { Escalation } from "../agent/journey.ts";
 import { describeError } from "../agent/brain.ts";
+import { DANCE, danceGif } from "../agent/dance.ts";
 import { LoopGuard, type ChannelResolver, type Conversation } from "../agent/channel.ts";
 import { config } from "../config.ts";
 import type { Thread as SageThread } from "../store.ts";
@@ -284,6 +285,9 @@ export class OpsAgent {
         console.error("ops: card failed", describeError(error));
         await this.say(conversation, threadId, `Open it here: ${l.url}`);
       }
+    }
+    if (turn.dance && conversation.sendImage) {
+      await conversation.sendImage(await danceGif(), DANCE.name, DANCE.mimeType).catch((error) => console.error("ops: dance failed", describeError(error)));
     }
   }
 }

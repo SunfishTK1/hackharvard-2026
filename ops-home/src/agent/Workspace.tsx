@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { AgentLink, AgentMessage, Me } from "../agent-types";
 import { takePending } from "../ask";
 import { Chat, isDecision } from "./Chat";
+import { DanceParty } from "./Dance";
 import { CommandBar } from "./CommandBar";
 import { routeForLink, routeFromUrl, urlFor, useData, WorkspaceContext, type Page, type Route, type Workspace as Ctx } from "./core";
 import { PreparedDecision } from "./Decide";
@@ -54,6 +55,10 @@ export function Workspace({ me, onSignedOut }: { me: Me; onSignedOut: () => void
   const [alertBadge, setAlertBadge] = useState(0);
   const [version, setVersion] = useState(0);
   const [prepared, setPrepared] = useState<{ approvalId: string; title: string } | null>(null);
+  // Each dance gets a new key, so asking again mid-dance starts it over.
+  const [dancing, setDancing] = useState(0);
+  const dance = useCallback(() => setDancing((n) => n + 1), []);
+  const danced = useCallback(() => setDancing(0), []);
   const toastId = useRef(0);
   const center = useRef<HTMLElement>(null);
 
@@ -181,7 +186,7 @@ export function Workspace({ me, onSignedOut }: { me: Me; onSignedOut: () => void
         </main>
         <aside className={`ws-chat${chatOpen ? " open" : ""}`} aria-hidden={!chatOpen}>
           <Chat open={chatOpen} onClose={() => setChatOpen(false)} outbox={outbox} onOutboxTaken={() => setOutbox(null)}
-            onIncoming={onIncoming} onOpenLink={open} onSignedOut={onSignedOut} />
+            onIncoming={onIncoming} onOpenLink={open} onSignedOut={onSignedOut} onDance={dance} />
         </aside>
         {!chatOpen && (
           <button type="button" className="ws-ask glass" onClick={() => setChatOpen(true)} aria-label="Open the conversation with Trial Ops">
@@ -191,6 +196,7 @@ export function Workspace({ me, onSignedOut }: { me: Me; onSignedOut: () => void
         )}
         {cmdOpen && <CommandBar studies={home.data?.studies ?? []} onGo={go} onAsk={ask} onClose={() => setCmdOpen(false)} />}
         {prepared && <PreparedDecision approvalId={prepared.approvalId} title={prepared.title} onClose={() => setPrepared(null)} onDone={changed} />}
+        {dancing > 0 && <DanceParty key={dancing} onDone={danced} />}
         <div className="ws-toasts" aria-live="polite" role="status">
           {toasts.map((t) => (
             <div key={t.id} className="ws-toast glass">

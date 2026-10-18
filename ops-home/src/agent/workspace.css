@@ -426,6 +426,31 @@
   .cmd-backdrop { padding-top: 8vh; }
 }
 
+/* The dancing crab (an easter egg): a sprite sheet of 16 frames in a row, stepped through in 2 s. */
+.crab { display: block; background-repeat: no-repeat; background-size: 1600% 100%; image-rendering: pixelated; animation: crab-steps 2s steps(16) infinite; }
+@keyframes crab-steps { from { background-position: 0 0; } to { background-position: 106.6667% 0; } }
+.crab-tile {
+  position: relative; display: grid; place-items: end center; width: 168px; height: 124px; padding: 0 0 14px; overflow: hidden;
+  border: 0; border-radius: 16px; background: radial-gradient(circle at 50% 0, #3a3160, #17142a 70%); cursor: pointer;
+}
+.crab-floor {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 12px; opacity: .85;
+  background: repeating-linear-gradient(90deg, #d97757 0 14px, #2a2540 14px 28px, #6a9bcc 28px 42px, #2a2540 42px 56px, #bca6e5 56px 70px, #2a2540 70px 84px);
+}
+.dance-party { position: fixed; inset: 0; z-index: 1000; pointer-events: none; overflow: hidden; }
+.dance-lights {
+  position: absolute; inset: -20%; opacity: .22; mix-blend-mode: multiply; animation: dance-lights 3s linear infinite;
+  background: conic-gradient(from 0deg at 50% 0%, #d97757 0 8%, transparent 8% 17%, #6a9bcc 17% 25%, transparent 25% 33%, #bca6e5 33% 42%, transparent 42% 50%, #788c5d 50% 58%, transparent 58% 67%, #d97757 67% 75%, transparent 75% 83%, #6a9bcc 83% 92%, transparent 92%);
+}
+@keyframes dance-lights { to { transform: rotate(1turn); } }
+.dance-mover { position: absolute; left: 0; top: 0; will-change: transform; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, .25)); }
+.dance-hop { animation: dance-hop .5s ease-in-out infinite alternate; }
+@keyframes dance-hop { to { transform: translateY(-22px); } }
+.dance-note { position: absolute; bottom: -48px; font-size: 34px; color: #d97757; animation: dance-note 4.2s linear infinite; }
+@keyframes dance-note { 0% { transform: translateY(0) rotate(-12deg); opacity: 0; } 10% { opacity: 1; } 100% { transform: translateY(-115vh) rotate(18deg); opacity: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   .ws *, .cmd *, .prepared * { animation: none !important; transition: none !important; }
+  .dance-mover { left: auto; top: auto; right: 24px; bottom: 96px; }
+  .dance-note, .dance-lights { display: none; }
 }

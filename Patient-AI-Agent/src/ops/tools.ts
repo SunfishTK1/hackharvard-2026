@@ -3,6 +3,7 @@
 // up with a participant who talks to Sage. Results are compact JSON for the model.
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { danceTool } from "../agent/dance.ts";
 import { ApprovalError, prepare } from "./approvals.ts";
 import * as data from "./data.ts";
 import { ops } from "./db.ts";
@@ -22,6 +23,8 @@ export interface OpsToolContext {
   queueCard(view: data.View, params: Record<string, string>, text?: { headline?: string; subline?: string; badge?: string }, query?: string): Promise<string>;
   /** Asks Sage to follow up with a participant. False when Sage doesn't talk to them. */
   askSage(participantCode: string, note: string): Promise<boolean>;
+  /** Queues the dancing crab (an easter egg) to go out right after the reply. */
+  dance(): string;
 }
 
 const json = (value: unknown, max = 12_000) => {
@@ -216,5 +219,6 @@ export function opsTools(ctx: OpsToolContext) {
       run: async ({ participant, note }) =>
         (await ctx.askSage(participant, note)) ? "Sage will follow up with them now." : "Sage doesn't talk to this participant (they're on the platform's own messaging), so it can't follow up.",
     }),
+    danceTool(() => ctx.dance()),
   ];
 }

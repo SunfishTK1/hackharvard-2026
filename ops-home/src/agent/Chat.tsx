@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { AgentLink, AgentMessage, ChatReply } from "../agent-types";
 import { call } from "./api";
+import { CrabTile, isDance } from "./Dance";
 import { Icon } from "./ui";
 
 const POLL_MS = 5_000;
@@ -97,9 +98,11 @@ export interface ChatProps {
   onIncoming: (messages: AgentMessage[]) => void;
   onOpenLink: (link: AgentLink) => void;
   onSignedOut: () => void;
+  /** They asked Trial Ops to dance (here or in iMessage): the crab dances all over the screen. */
+  onDance: () => void;
 }
 
-export function Chat({ open, onClose, outbox, onOutboxTaken, onIncoming, onOpenLink, onSignedOut }: ChatProps) {
+export function Chat({ open, onClose, outbox, onOutboxTaken, onIncoming, onOpenLink, onSignedOut, onDance }: ChatProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [sending, setSending] = useState(false);
@@ -110,6 +113,8 @@ export function Chat({ open, onClose, outbox, onOutboxTaken, onIncoming, onOpenL
   const end = useRef<HTMLDivElement>(null);
   const incoming = useRef(onIncoming);
   incoming.current = onIncoming;
+  const dance = useRef(onDance);
+  dance.current = onDance;
 
   /** New messages since the last one seen. `solicited`: they answer something sent here. */
   const sync = useCallback(async (solicited: boolean): Promise<boolean> => {
@@ -125,6 +130,7 @@ export function Chat({ open, onClose, outbox, onOutboxTaken, onIncoming, onOpenL
     if (!first && !solicited) {
       const fromAgent = r.body.messages.filter((m) => m.author === "agent");
       if (fromAgent.length) incoming.current(fromAgent);
+      if (fromAgent.some((m) => m.link && isDance(m.link))) dance.current();
     }
     return true;
   }, [onSignedOut]);
@@ -155,9 +161,12 @@ export function Chat({ open, onClose, outbox, onOutboxTaken, onIncoming, onOpenL
     }
     if (!r.ok) {
       setItems((prev) => [...prev, { id: `local-${++localId.current}`, at: new Date().toISOString(), author: "agent", kind: "text", body: r.body.error ?? "Trial Ops couldn't answer. Try again.", link: null, local: true, failed: true }]);
-    } else if (!(await sync(true))) {
-      const reply = r.body.reply;
-      setItems((prev) => [...prev, { id: `local-${++localId.current}`, at: new Date().toISOString(), author: "agent", kind: "text", body: reply.text, link: null, links: reply.links, local: true }]);
+    } else {
+      if (r.body.reply.links?.some(isDance)) dance.current();
+      if (!(await sync(true))) {
+        const reply = r.body.reply;
+        setItems((prev) => [...prev, { id: `local-${++localId.current}`, at: new Date().toISOString(), author: "agent", kind: "text", body: reply.text, link: null, links: reply.links, local: true }]);
+      }
     }
     setSending(false);
   }, [onSignedOut, sync]);
@@ -211,7 +220,7 @@ export function Chat({ open, onClose, outbox, onOutboxTaken, onIncoming, onOpenL
             {b.text && <div className="msg-text"><Text text={b.text} /></div>}
             {b.links.length > 0 && (
               <div className="msg-links">
-                {b.links.map((l, i) => (
+                {b.links.map((l, i) => isDance(l) ? <CrabTile key={`${l.url}-${i}`} onDance={() => dance.current()} /> : (
                   <button key={`${l.url}-${i}`} type="button" className="link-chip" onClick={() => onOpenLink(l)}>
                     {l.title}<span aria-hidden="true" className="link-chip-arrow">{isDecision(l) ? Icon.faceid : "›"}</span>
                   </button>

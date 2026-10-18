@@ -11,6 +11,7 @@ import type { LineRouter } from "../router/router.ts";
 import * as store from "../store.ts";
 import { Brain, describeError } from "./brain.ts";
 import { LoopGuard, type ChannelResolver, type Conversation } from "./channel.ts";
+import { DANCE, DANCE_QUEUED, danceGif } from "./dance.ts";
 import { Journey } from "./journey.ts";
 import { systemPrompt, toMessages, type TurnContext } from "./prompt.ts";
 import { speak, voiceEnabled } from "../voice/xai.ts";
@@ -202,6 +203,7 @@ export class Assistant {
     const ctx = await asPerson(personId, (q) => this.context(q, personId));
     if (!ctx) return this.say(conversation, personId, threadId, NOT_RECRUITING);
     const cards: store.Form[] = [];
+    let dance = false;
     const toolContext: ToolContext = {
       personId,
       engagementId: ctx.engagement.id,
@@ -223,6 +225,10 @@ export class Assistant {
         });
         cards.push(form);
         return `The ${kind} card will appear right after your message.`;
+      },
+      queueDance: () => {
+        dance = true;
+        return DANCE_QUEUED;
       },
     };
     const tools = assistantTools(toolContext);
@@ -251,6 +257,18 @@ export class Assistant {
       });
     }
     for (const form of cards) await this.deliverCard(conversation, threadId, form);
+    if (dance) await this.sendDance(conversation, personId, threadId);
+  }
+
+  /** The dancing crab, an easter egg. Kept in the chat (not the platform's study record). */
+  private async sendDance(conversation: Conversation, personId: string, threadId: string): Promise<void> {
+    if (!conversation.sendImage) return;
+    try {
+      const sent = await conversation.sendImage(await danceGif(), DANCE.name, DANCE.mimeType);
+      await asPerson(personId, (q) => store.addMessage(q, { threadId, personId, direction: "outbound", author: "assistant", body: `(${DANCE.title.toLowerCase()} GIF)`, externalId: sent.externalId }));
+    } catch (error) {
+      console.error("assistant: dance failed", describeError(error));
+    }
   }
 
   private async deliverCard(conversation: Conversation, threadId: string, form: store.Form): Promise<void> {
