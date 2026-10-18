@@ -4,6 +4,7 @@
 // panel. The server proxies /api/agent/* to the Trial Ops API (agent-proxy.ts).
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { AgentLink, AgentMessage, AnalysisPhase, AnalysisSummary, ChatReply, Me } from "./agent-types";
+import { peekPending, takePending } from "./ask";
 import "./agentic.css";
 
 const POLL_MS = 5_000;
@@ -65,6 +66,9 @@ export function normalizePhone(raw: string): string | null {
   return /^\+[1-9]\d{6,14}$/.test(e164) ? e164 : null;
 }
 
+/** A decision (the decisions list or one decision): it needs Face ID, so it opens in a page of its own. */
+const isDecision = (link: AgentLink) => link.view === "approvals" || link.view === "approval" || /[?&]approval=/.test(link.url);
+
 const byTime = (a: Item, b: Item) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id);
 const sameText = (a: string, b: string) => a.trim() === b.trim();
 
@@ -110,6 +114,7 @@ function Text({ text }: { text: string }) {
 const timeLabel = (iso: string) => new Date(iso).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
 
 function SignIn({ error }: { error?: string }) {
+  const saved = peekPending();
   const [phone, setPhone] = useState("+1 ");
   const [state, setState] = useState<{ kind: "idle" | "sending" | "sent"; error?: string }>({ kind: "idle", error });
   const submit = async (e: FormEvent) => {
@@ -125,7 +130,7 @@ function SignIn({ error }: { error?: string }) {
       <section className="agentic-center rise">
         <div className="agentic-eyebrow">Agentic</div>
         <h1 className="agentic-title">Check Messages.</h1>
-        <p className="agentic-lede">Tap the link to come back here signed in. It works once, for 15 minutes.</p>
+        <p className="agentic-lede">Tap the link to come back here signed in. It works once, for 15 minutes.{saved ? " Your question goes to Trial Ops as soon as you're in." : ""}</p>
         <button type="button" className="link-button" onClick={() => setState({ kind: "idle" })}>Use a different number</button>
       </section>
     );
@@ -138,6 +143,13 @@ function SignIn({ error }: { error?: string }) {
         A conversation with the trial managers’ assistant, about live study data. It’s the same Trial Ops you can text in
         iMessage. Sign in with the phone number your study team linked.
       </p>
+      {saved && (
+        <div className="saved-question" role="status">
+          <span className="saved-label">Your question is saved</span>
+          <span className="saved-text">“{saved}”</span>
+          <span className="saved-note">It’s sent as soon as you’re signed in.</span>
+        </div>
+      )}
       <form className="signin" onSubmit={submit} noValidate>
         <label htmlFor="agent-phone" className="signin-label">Phone number</label>
         <input
@@ -285,6 +297,7 @@ export function Agentic({ onAccount }: { onAccount: (name: string | null) => voi
   const endRef = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const localId = useRef(0);
+  const askRef = useRef<((text: string) => Promise<void>) | null>(null);
 
   const signedOut = useCallback((error?: string) => {
     onAccount(null);
@@ -338,6 +351,9 @@ export function Agentic({ onAccount }: { onAccount: (name: string | null) => voi
       setPhase({ kind: "ready", me: me.body });
       await sync();
       await loadAnalyses();
+      // A question handed over from the Classic page (kept through sign-in) goes out now, once.
+      const pending = cancelled ? null : takePending();
+      if (pending) void askRef.current?.(pending);
     })();
     return () => {
       cancelled = true;
@@ -365,7 +381,7 @@ export function Agentic({ onAccount }: { onAccount: (name: string | null) => voi
 
   const open = (link: AgentLink, from?: HTMLElement | null) => {
     // Decisions need Face ID in a page of their own; everything else opens beside the conversation.
-    if (link.url.includes("approval=")) {
+    if (isDecision(link)) {
       window.open(link.url, "_blank", "noopener,noreferrer");
       return;
     }
@@ -397,6 +413,8 @@ export function Agentic({ onAccount }: { onAccount: (name: string | null) => voi
     if (/computer|analys/i.test(text)) void loadAnalyses();
     inputRef.current?.focus();
   };
+
+  askRef.current = ask;
 
   const openAnalysis = async (a: AnalysisSummary, from: HTMLElement) => {
     const r = await api<{ url: string }>("link", { method: "POST", body: { view: "analysis", params: { id: a.id } } });
@@ -466,7 +484,7 @@ export function Agentic({ onAccount }: { onAccount: (name: string | null) => voi
                     {b.links.map((l, i) => (
                       <button key={`${l.url}-${i}`} type="button" className="link-chip" onClick={(e) => open(l, e.currentTarget)}>
                         {l.title}
-                        <span aria-hidden="true" className="link-chip-arrow">{l.url.includes("approval=") ? "↗" : "›"}</span>
+                        <span aria-hidden="true" className="link-chip-arrow">{isDecision(l) ? "↗" : "›"}</span>
                       </button>
                     ))}
                   </div>

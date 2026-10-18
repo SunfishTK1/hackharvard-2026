@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { Agentic } from "./Agentic";
+import { savePending } from "./ask";
 import type { BlindSpot, Change, HomeData, PipelinePoint, StudyRow, WaitingGroup, WaitingPerson } from "./types";
 
 type Mode = "classic" | "agentic";
@@ -20,6 +21,17 @@ const s = {
   muted: { color: MUTED } as CSSProperties,
 };
 
+type Ask = (question: string) => void;
+
+/** A quiet "Ask Trial Ops" link: switches to Agentic mode and sends the question there. */
+function AskLink({ question, onAsk, label = "Ask Trial Ops", className = "" }: { question: string; onAsk: Ask; label?: string; className?: string }) {
+  return (
+    <button type="button" className={`ask-link ${className}`.trim()} onClick={() => onAsk(question)} title={question}>
+      {label}
+    </button>
+  );
+}
+
 function Source({ show, children, style }: { show: boolean; children: ReactNode; style?: CSSProperties }) {
   return show ? <div style={{ ...s.source, ...style }}>{children}</div> : null;
 }
@@ -36,8 +48,18 @@ function Header({ mode, onMode, account, onSignOut }: { mode: Mode; onMode: (m: 
     e.preventDefault();
     onMode(m);
   };
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const measure = () => document.documentElement.style.setProperty("--topbar-h", `${Math.round(el.getBoundingClientRect().height)}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <header className="topbar">
+    <header className="topbar" ref={bar}>
       <nav aria-label="Primary" className="topnav">
         <a href={mode === "classic" ? "#top" : "?mode=agentic"} aria-current="page" className="brand">
           <span aria-hidden="true" className="brand-mark" />Trial Ops
@@ -90,7 +112,14 @@ function tagStyle(kind: Change["kind"]): CSSProperties {
   };
 }
 
-function Changes({ data, showSources }: { data: HomeData; showSources: boolean }) {
+/** The question a change row hands to Trial Ops. */
+function changeQuestion(c: Change): string {
+  const code = c.where.match(/STUDY-\d+-P\d+/)?.[0];
+  if (code) return `Tell me about ${code}: "${c.text}" What's waiting on it, and with whom?`;
+  return `Tell me more about this: "${c.text}" (${c.where})`;
+}
+
+function Changes({ data, showSources, onAsk }: { data: HomeData; showSources: boolean; onAsk: Ask }) {
   return (
     <section id="changed" style={{ background: PANEL, padding: "72px 24px" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 48 }}>
@@ -105,20 +134,21 @@ function Changes({ data, showSources }: { data: HomeData; showSources: boolean }
         {data.changes.items.length > 0 && (
           <div className="stagger change-list">
             {data.changes.items.map((c, i) => {
-              const body = (
-                <>
+              return (
+                <div key={i} className="row change-row">
                   <span style={{ fontSize: 13, color: MUTED, fontVariantNumeric: "tabular-nums" }}>{c.when}</span>
                   <span style={{ minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 17 }}>{c.text}</span>
+                    {c.href ? (
+                      <a className="row-link" href={c.href} style={{ display: "block", fontSize: 17 }}>{c.text}</a>
+                    ) : (
+                      <span style={{ display: "block", fontSize: 17 }}>{c.text}</span>
+                    )}
                     <span style={{ fontSize: 13, color: MUTED }}>{c.where}</span>
+                    <span className="ask-sep" aria-hidden="true"> · </span>
+                    <AskLink question={changeQuestion(c)} onAsk={onAsk} />
                   </span>
                   <span style={tagStyle(c.kind)}>{c.tag}</span>
-                </>
-              );
-              return c.href ? (
-                <a key={i} className="row change-row" href={c.href}>{body}</a>
-              ) : (
-                <div key={i} className="row change-row">{body}</div>
+                </div>
               );
             })}
           </div>
@@ -130,7 +160,7 @@ function Changes({ data, showSources }: { data: HomeData; showSources: boolean }
 
 const BAR_SCALE_DAYS = 10;
 
-function Person({ p, open, onToggle }: { p: WaitingPerson; open: boolean; onToggle: () => void }) {
+function Person({ p, open, onToggle, onAsk }: { p: WaitingPerson; open: boolean; onToggle: () => void; onAsk: Ask }) {
   const over = p.ageDays > p.typicalDays;
   return (
     <div style={{ background: "#FFFFFF", borderRadius: 18 }}>
@@ -159,7 +189,11 @@ function Person({ p, open, onToggle }: { p: WaitingPerson; open: boolean; onTogg
           {p.items.map((i) => (
             <div key={i.code} className="person-item">
               <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{i.code}</span>
-              <span>{i.text}</span>
+              <span>
+                {i.text}
+                <span className="ask-sep" aria-hidden="true"> · </span>
+                <AskLink question={`Tell me about ${i.code} and what's waiting on them: "${i.text}" (with ${p.name})`} onAsk={onAsk} />
+              </span>
               <span style={{ color: MUTED, whiteSpace: "nowrap" }}>{i.age}</span>
             </div>
           ))}
@@ -169,7 +203,7 @@ function Person({ p, open, onToggle }: { p: WaitingPerson; open: boolean; onTogg
   );
 }
 
-function Waiting({ data, showSources }: { data: HomeData; showSources: boolean }) {
+function Waiting({ data, showSources, onAsk }: { data: HomeData; showSources: boolean; onAsk: Ask }) {
   const first = data.waiting.groups.find((g) => g.people.length)?.people[0]?.name ?? null;
   const [open, setOpen] = useState<string | null>(first);
   return (
@@ -190,7 +224,7 @@ function Waiting({ data, showSources }: { data: HomeData; showSources: boolean }
             </div>
             {g.people.length === 0 && <div style={{ padding: "4px 8px", color: MUTED }}>Nothing waiting.</div>}
             {g.people.map((p) => (
-              <Person key={p.name} p={p} open={open === p.name} onToggle={() => setOpen(open === p.name ? null : p.name)} />
+              <Person key={p.name} p={p} open={open === p.name} onToggle={() => setOpen(open === p.name ? null : p.name)} onAsk={onAsk} />
             ))}
           </div>
         ))}
@@ -292,7 +326,7 @@ function Pipeline({ data, showSources }: { data: HomeData; showSources: boolean 
   );
 }
 
-function BlindSpots({ data, showSources }: { data: HomeData; showSources: boolean }) {
+function BlindSpots({ data, showSources, onAsk }: { data: HomeData; showSources: boolean; onAsk: Ask }) {
   const cards = data.blindSpots.cards;
   return (
     <section id="blind-spots" style={s.section}>
@@ -311,7 +345,13 @@ function BlindSpots({ data, showSources }: { data: HomeData; showSources: boolea
               <div style={{ fontSize: 13, color: MUTED }}>{b.context}</div>
               <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>{b.title}</div>
               <div style={{ fontSize: 15, lineHeight: 1.47 }}>{b.body}</div>
-              <div style={{ fontSize: 15, color: "#0066CC", marginTop: 6 }}>{b.action}</div>
+              <div style={{ marginTop: 6 }}>
+                <AskLink
+                  question={`${b.title} (${b.context}) ${b.body} ${b.action.replace(/\s*→\s*$/, "")}: help me with this.`}
+                  onAsk={onAsk} label={b.action} className="ask-action"
+                />
+                <span className="ask-hint"> in Trial Ops</span>
+              </div>
             </div>
           ))}
         </div>
@@ -336,7 +376,7 @@ const cssToStyle = (css: string): CSSProperties =>
   Object.fromEntries(css.split(";").map((d) => d.split(":").map((x) => x.trim())).filter(([k]) => k)
     .map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]));
 
-function Studies({ data, showSources }: { data: HomeData; showSources: boolean }) {
+function Studies({ data, showSources, onAsk }: { data: HomeData; showSources: boolean; onAsk: Ask }) {
   return (
     <section id="studies" style={{ ...s.section, padding: "72px 24px 120px" }}>
       <div style={s.eyebrow}>Study health</div>
@@ -353,6 +393,9 @@ function Studies({ data, showSources }: { data: HomeData; showSources: boolean }
               <span role="cell">
                 <span style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{r.short}</span>
                 <span style={{ fontSize: 13, color: MUTED }}>{r.meta}</span>
+                <span style={{ display: "block" }}>
+                  <AskLink question={`How is ${r.short.split(" · ")[0]} doing? (${r.meta.split(" · ")[0]})`} onAsk={onAsk} />
+                </span>
               </span>
               <span role="cell" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span aria-hidden="true" style={{ display: "flex", height: 8, borderRadius: 980, overflow: "hidden", gap: 2 }}>
@@ -443,6 +486,12 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
+  /** From Classic: keep the question, switch to Agentic, which sends it (after sign-in if needed). */
+  const ask = (question: string) => {
+    savePending(question);
+    switchMode("agentic");
+  };
+
   const signOut = async () => {
     await fetch("/api/agent/sign-out", { method: "POST" }).catch(() => undefined);
     setAccount(null);
@@ -487,11 +536,11 @@ export default function App() {
         <main>
           {error && <div className="stale" role="status">Showing data from {new Date(data.generatedAt).toLocaleTimeString()}. {error}</div>}
           <Hero data={data} />
-          <Changes data={data} showSources={showSources} />
-          <Waiting data={data} showSources={showSources} />
+          <Changes data={data} showSources={showSources} onAsk={ask} />
+          <Waiting data={data} showSources={showSources} onAsk={ask} />
           <Pipeline data={data} showSources={showSources} />
-          <BlindSpots data={data} showSources={showSources} />
-          <Studies data={data} showSources={showSources} />
+          <BlindSpots data={data} showSources={showSources} onAsk={ask} />
+          <Studies data={data} showSources={showSources} onAsk={ask} />
           <Footer data={data} showSources={showSources} onToggleSources={toggleSources} />
         </main>
       )}
