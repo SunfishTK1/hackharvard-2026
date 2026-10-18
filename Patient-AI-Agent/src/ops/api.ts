@@ -15,6 +15,7 @@
 //   POST /v1/link {view, params}             -> {url}               a mini-app link (Face ID decisions)
 //   GET  /v1/analyses, GET /v1/analyses/<id>, POST /v1/analyses {title, request},
 //   POST /v1/analyses/<id>/cancel, GET /v1/analyses/<id>/files/<name>, POST /v1/computer/shutdown
+//   GET  /v1/prefs, POST /v1/prefs {alerts?, briefing?}  what Trial Ops texts about on its own
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { describeError } from "../agent/brain.ts";
@@ -141,6 +142,18 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort) {
     const m = await sessionManager(req);
     if (method === "GET" && path === "/v1/me") {
       return send(res, 200, { name: config.ops.name, manager: { name: m.displayName }, studies: await store.managerStudies(ops, m.id), computers: Boolean(core.analyst) });
+    }
+    if (path === "/v1/prefs" && method === "GET") return send(res, 200, { ...(await store.prefs(ops, m.id)), timeZone: config.timeZone });
+    if (path === "/v1/prefs" && method === "POST") {
+      const b = await body(req);
+      const change: Partial<store.Prefs> = {};
+      if (typeof b.alerts === "string") change.alerts = b.alerts as store.Prefs["alerts"];
+      if (typeof b.briefing === "string") change.briefing = b.briefing;
+      try {
+        return send(res, 200, { ...(await store.setPrefs(ops, m.id, change)), timeZone: config.timeZone });
+      } catch (error) {
+        throw new ApiError(422, (error as Error).message);
+      }
     }
     if (method === "GET" && path === "/v1/messages") {
       const after = url.searchParams.get("after");

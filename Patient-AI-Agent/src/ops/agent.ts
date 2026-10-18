@@ -7,6 +7,7 @@ import type { ChannelResolver, Conversation } from "../agent/channel.ts";
 import { config } from "../config.ts";
 import type { Thread as SageThread } from "../store.ts";
 import type { AnalysisDone } from "./analyst.ts";
+import type { View } from "./data.ts";
 import { OpsCore, type OpsTurn } from "./core.ts";
 import { ops } from "./db.ts";
 import * as store from "./store.ts";
@@ -111,6 +112,38 @@ export class OpsAgent {
         trailingNote: updated ? "An analysis just finished (see the update above) and its card already shows the report. Tell them now; don't send another card for it." : "An analysis just finished (see the update above). Tell them now.",
         ensureLink: updated ? undefined : { view: "analysis", params: { id: done.id } },
       });
+      if (found) await this.deliver(found.conversation, found.threadId, turn);
+    });
+  }
+
+  /**
+   * A message Trial Ops starts (a new-alert notice), with its card: kept in the conversation, so
+   * the website shows it too, and sent in iMessage when the manager has a chat there.
+   */
+  proactive(managerId: string, text: string, link?: { view: View; params: Record<string, string> }): Promise<void> {
+    return this.core.serial(managerId, async () => {
+      const m = await store.managerById(ops, managerId);
+      if (!m) return;
+      const thread = await store.ensureThread(ops, m.id);
+      await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", body: text });
+      const links = link ? [await this.core.link(m, link.view, link.params)] : [];
+      for (const l of links) await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", kind: "card", body: l.title, link: { view: l.view, title: l.title, url: l.url } });
+      const found = await this.conversationOf(m.id);
+      if (found) await this.deliver(found.conversation, found.threadId, { text, links });
+    });
+  }
+
+  /** The morning briefing: a turn written for the day, with the portfolio card. */
+  briefing(managerId: string): Promise<void> {
+    return this.core.serial(managerId, async () => {
+      const m = await store.managerById(ops, managerId);
+      if (!m) return;
+      const thread = await store.ensureThread(ops, m.id);
+      const turn = await this.core.reply(m, thread.id, {
+        trailingNote: "It's time for their morning briefing. Start with \"Good morning.\" then in three to five short lines: the one thing that most needs them today, the decisions waiting on them, anything stuck or gone quiet, and one bit of progress since yesterday.",
+        ensureLink: { view: "home", params: {} },
+      });
+      const found = await this.conversationOf(m.id);
       if (found) await this.deliver(found.conversation, found.threadId, turn);
     });
   }

@@ -165,6 +165,10 @@ export class OpsCore {
         if (s) return { headline: `${s.intervention ?? s.study_code}.`, subline: `${s.condition ?? ""}. Sites, enrollment, check-ins.`, badge: s.study_code };
       }
       if (view === "participant" && params.code) return { headline: `${params.code.replace(/^STUDY-\d+-/, "")}.`, subline: "Readings, alerts and timeline.", badge: params.code.split("-").slice(0, 2).join("-") };
+      if (view === "alert" && params.id) {
+        const [a] = await ops<{ severity: string; participant_code: string; study_code: string; status: string }>("select severity, participant_code, study_code, status from ops.alerts where id = $1", [params.id]);
+        if (a) return { headline: `${a.severity[0].toUpperCase()}${a.severity.slice(1)} alert.`, subline: `${a.participant_code.replace(/^STUDY-\d+-/, "")} · ${a.status === "open" ? "Open" : a.status === "acknowledged" ? "Acknowledged" : "Resolved"}.`, badge: a.study_code };
+      }
       if (view === "analysis" && params.id) {
         const [a] = await ops<{ title: string; status: string }>("select title, status from ops.analyses where id = $1", [params.id]);
         if (a) return { headline: a.title.length <= 34 ? a.title : `${a.title.slice(0, 33)}…`, subline: a.status === "done" ? "Summary, findings, charts and tables." : "Running on your computer.", badge: a.status === "done" ? "Report" : "Running" };

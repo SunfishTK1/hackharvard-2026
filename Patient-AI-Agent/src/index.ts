@@ -12,6 +12,7 @@ import { ConsentFirstKnowledge } from "./knowledge/consent-first.ts";
 import { OpsAgent } from "./ops/agent.ts";
 import { opsEnabled } from "./ops/db.ts";
 import { startOpsApi } from "./ops/api.ts";
+import { Notifier } from "./ops/notifier.ts";
 import { opsHttp } from "./ops/web.ts";
 import { LineRouter } from "./router/router.ts";
 import { startRouterServer } from "./router/server.ts";
@@ -26,7 +27,10 @@ console.log(opsAgent ? `ops: ${config.ops.name} is on (${config.ops.model})` : "
 startWebServer(knowledge, new Forms(knowledge, assistant), assistant, config.port,
   opsAgent ? opsHttp(opsAgent, (handle, note) => assistant.nudge(handle, note)) : undefined);
 startRouterServer(router, assistant);
-if (opsAgent) startOpsApi(opsAgent);
+if (opsAgent) {
+  startOpsApi(opsAgent);
+  new Notifier(opsAgent).start();
+}
 const opsLine = opsAgent && config.ops.spectrum.projectId && config.ops.spectrum.projectSecret ? config.ops.spectrum : undefined;
 
 /** Each inbound text goes to Trial Ops when it's a linked manager's, otherwise to Sage. */

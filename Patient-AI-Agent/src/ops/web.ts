@@ -41,6 +41,7 @@ export function opsHttp(agent: OpsAgent | undefined, followUp: (handle: string, 
         return json(res, 200, { name: config.ops.name, manager: { name: manager.displayName }, view: card.view, params: card.params, studies });
       }
       if (action === "approval") return json(res, 200, { approval: need(await approvals.view(manager, uuid(p("id"))), "decision") });
+      if (action === "prefs") return json(res, 200, { ...(await store.prefs(ops, manager.id)), timeZone: config.timeZone });
       if (action === "analysis/file") {
         const name = p("name") ?? "";
         const f = need(await analysisFile(manager, uuid(p("id")), name), "file");
@@ -89,6 +90,16 @@ export function opsHttp(agent: OpsAgent | undefined, followUp: (handle: string, 
           const id = uuid(String(body.id ?? ""));
           if (!(await agent?.core.analyst?.cancel(manager.id, id))) throw new HttpError(409, "That analysis isn't running.");
           return json(res, 200, { analysis: await viewJson(manager, "analysis", (k) => (k === "id" ? id : undefined), (aid, name) => `/api/o/${token}/analysis/file?id=${aid}&name=${encodeURIComponent(name)}`) });
+        }
+        case "prefs": {
+          const change: Partial<store.Prefs> = {};
+          if (typeof body.alerts === "string") change.alerts = body.alerts as store.Prefs["alerts"];
+          if (typeof body.briefing === "string") change.briefing = body.briefing;
+          try {
+            return json(res, 200, { ...(await store.setPrefs(ops, manager.id, change)), timeZone: config.timeZone });
+          } catch (error) {
+            throw new HttpError(422, (error as Error).message);
+          }
         }
         case "computer/shutdown":
           return json(res, 200, { ok: await computer.shutDown(manager.id), computer: await computer.status(manager.id) ?? null });

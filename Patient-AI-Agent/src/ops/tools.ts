@@ -7,7 +7,7 @@ import { ApprovalError, prepare } from "./approvals.ts";
 import * as data from "./data.ts";
 import { ops } from "./db.ts";
 import type { Manager } from "./store.ts";
-import { APPROVAL_KINDS, type ApprovalKind } from "./store.ts";
+import { ALERT_PREFS, APPROVAL_KINDS, prefs, setPrefs, type ApprovalKind } from "./store.ts";
 
 export interface OpsToolContext {
   manager: Manager;
@@ -197,6 +197,16 @@ export function opsTools(ctx: OpsToolContext) {
           throw error;
         }
       },
+    }),
+    betaZodTool({
+      name: "notifications",
+      description: "See or change what Trial Ops texts them about on its own: new alerts at their studies (all, high = high and critical, critical, or off) and the morning briefing (a time HH:MM in the team's time zone, 24-hour, or off). Call with no arguments to see the current settings.",
+      inputSchema: z.object({
+        alerts: z.enum(ALERT_PREFS).optional(),
+        briefing: z.string().regex(/^(([01]\d|2[0-3]):[0-5]\d|off)$/).optional().describe("e.g. 07:30, or off"),
+      }),
+      run: async ({ alerts, briefing }) =>
+        json(alerts || briefing ? { saved: await setPrefs(ops, ctx.manager.id, { ...(alerts ? { alerts } : {}), ...(briefing ? { briefing } : {}) }) } : await prefs(ops, ctx.manager.id)),
     }),
     betaZodTool({
       name: "ask_sage",

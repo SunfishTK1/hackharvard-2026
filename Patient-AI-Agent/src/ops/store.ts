@@ -147,3 +147,27 @@ export async function audit(q: Query, managerId: string | null, action: string, 
   await q("insert into ops.audit_events (manager_id, action, detail, ip, user_agent) values ($1, $2, $3, $4, $5)",
     [managerId, action, detail, meta.ip ?? null, meta.userAgent ?? null]);
 }
+
+// Notifications ---------------------------------------------------------------------------------------
+
+export interface Prefs {
+  /** Which new alerts Trial Ops texts about: every one, high and critical, critical only, or none. */
+  alerts: "all" | "high" | "critical" | "off";
+  /** The morning briefing's time (HH:MM, team time zone), or off. */
+  briefing: string;
+}
+export const ALERT_PREFS = ["all", "high", "critical", "off"] as const;
+
+export async function prefs(q: Query, managerId: string): Promise<Prefs> {
+  const [r] = await q<{ prefs: Prefs }>("select prefs from ops.managers where id = $1", [managerId]);
+  return { alerts: r?.prefs?.alerts ?? "high", briefing: r?.prefs?.briefing ?? "08:00" };
+}
+
+/** Changes some preferences; checks them the way the database does. */
+export async function setPrefs(q: Query, managerId: string, change: Partial<Prefs>): Promise<Prefs> {
+  const next = { ...(await prefs(q, managerId)), ...change };
+  if (!ALERT_PREFS.includes(next.alerts)) throw new Error("Alerts can be all, high, critical or off.");
+  if (next.briefing !== "off" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(next.briefing)) throw new Error("The briefing time is HH:MM (24-hour), or off.");
+  await q("update ops.managers set prefs = $2 where id = $1", [managerId, JSON.stringify(next)]);
+  return next;
+}
