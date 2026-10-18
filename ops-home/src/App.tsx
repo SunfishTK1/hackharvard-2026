@@ -3,7 +3,6 @@ import Alerts from "./pages/Alerts";
 import Calendar from "./pages/Calendar";
 import Journeys from "./pages/Journeys";
 import Participant from "./pages/Participant";
-import Reported from "./pages/Reported";
 import Site from "./pages/Site";
 import StudiesPage from "./pages/Studies";
 import Study from "./pages/Study";
@@ -382,6 +381,15 @@ function Studies({ data, showSources }: { data: HomeData; showSources: boolean }
   );
 }
 
+/** Replaces the current address and re-renders the route, for links to pages that moved. */
+function Redirect({ to }: { to: string }) {
+  useEffect(() => {
+    history.replaceState(null, "", to + location.search);
+    dispatchEvent(new PopStateEvent("popstate"));
+  }, [to]);
+  return null;
+}
+
 // Classic-mode routes. Codes are the database's own (STUDY-001, SITE-001-A, STUDY-001-P003).
 function route(path: string) {
   const m = (re: RegExp) => path.match(re)?.[1];
@@ -394,8 +402,9 @@ function route(path: string) {
   if (path === "/alerts") return <Alerts />;
   if (path === "/journeys") return <Journeys />;
   if (path === "/calendar") return <Calendar />;
-  if (path === "/reported") return <Reported code={null} />;
-  if (code(/^\/reported\/([^/]+)$/)) return <Reported code={code(/^\/reported\/([^/]+)$/)} />;
+  // Reported data now lives on the participant page; older links still land there.
+  if (code(/^\/reported\/([^/]+)$/)) return <Redirect to={`/participants/${encodeURIComponent(code(/^\/reported\/([^/]+)$/)!)}`} />;
+  if (path === "/reported") return <Redirect to="/studies" />;
   return (
     <div className="status" role="status">
       <p style={{ fontSize: 28, fontWeight: 600, color: INK }}>Nothing here.</p>
