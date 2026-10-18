@@ -108,6 +108,9 @@ export function Chat({ open, onClose, outbox, onOutboxTaken, onIncoming, onOpenL
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState("");
   const lastAt = useRef<string | null>(null);
+  // The server's times are finer than a browser's, so the newest message comes back on every poll:
+  // only messages not seen before count as new.
+  const seen = useRef(new Set<string>());
   const localId = useRef(0);
   const input = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -126,9 +129,11 @@ export function Chat({ open, onClose, outbox, onOutboxTaken, onIncoming, onOpenL
     if (!r.ok || !Array.isArray(r.body.messages)) return false;
     const first = lastAt.current === null;
     for (const m of r.body.messages) if (!lastAt.current || m.at > lastAt.current) lastAt.current = m.at;
+    const fresh = r.body.messages.filter((m) => !seen.current.has(m.id));
+    for (const m of fresh) seen.current.add(m.id);
     setItems((prev) => merge(prev, r.body.messages));
     if (!first && !solicited) {
-      const fromAgent = r.body.messages.filter((m) => m.author === "agent");
+      const fromAgent = fresh.filter((m) => m.author === "agent");
       if (fromAgent.length) incoming.current(fromAgent);
       if (fromAgent.some((m) => m.link && isDance(m.link))) dance.current();
     }
