@@ -15,7 +15,7 @@
     "seed": "node src/scripts/seed.ts",
     "enroll": "node src/scripts/enroll.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/domain.test.ts",
+    "test": "node --test test/domain.test.ts test/ops.test.ts",
     "test:db": "node --test test/bridge.test.ts",
     "ops:link": "node src/scripts/ops-link.ts"
   },
