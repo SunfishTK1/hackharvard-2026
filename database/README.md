@@ -6,7 +6,7 @@ synthetic rosters/configuration, and all 20 bundled study PDFs. `study` and
 
 ## Layout
 
-There are **23 project tables**, one migration-tracking table, and six read-only
+There are **23 project tables**, one migration-tracking table, and seven read-only
 analytics views. The proposed table names are retained. Identifiable contacts and
 staff identities are deliberately outside `public`.
 
@@ -85,8 +85,17 @@ For example, `alerts.assigned_staff_id` references an assignment, whereas
   tasks, and draft/queued outbound messages. A worker must also recheck state
   immediately before every external action, including work already claimed.
 
-The six `analytics` views are `study_dashboard`, `site_metrics`,
-`participant_attention`, `assessment_status`, `alert_queue`, and `message_metrics`.
+The `analytics` views are `study_dashboard`, `site_metrics`,
+`participant_attention`, `assessment_status`, `alert_queue`, `message_metrics`,
+and `participant_measurements` (added by `003`).
+
+`participant_measurements` is the per-site, per-participant record of everything
+collected during the trial: one row per expected answer, with study day, local
+date, due time, status (`completed`, `missed`, `open`, `upcoming`, `skipped`,
+`cancelled`), and the current value. Responses without a schedule appear as
+`unscheduled`. The current value is the latest response that is not rejected and
+not superseded by a correction. Filter it by `study_code`, `site_code`, or
+`participant_code`.
 Completion rate means **non-rejected responses / due expected assessments**,
 excluding skipped/cancelled instances and not yet due instances. It is an
 operational response metric, not a claim of clinical validity or safety review.
@@ -97,8 +106,10 @@ Zero denominators produce `NULL`, not a misleading zero percent.
 - `app_owner` owns the application objects. The existing `developer` membership
   retains administrative access. These are trusted backend/admin privileges, not
   credentials to give browsers, patients, or an LLM.
-- `analyst` and `manager_agent` can read the six analytics views. They cannot
-  directly read contacts, raw message bodies, signatures, or observation values.
+- `analyst` and `manager_agent` can read the analytics views. They cannot
+  directly read contacts, raw message bodies, signatures, or raw replies.
+  `participant_measurements` deliberately shows parsed observation values,
+  including free-text symptom answers, to both roles.
   These views cover all studies. They are not a multi-tenant authorization layer.
 - `patient_agent` deliberately has no unscoped table access. Integrate a trusted,
   authenticated backend that scopes every request to the correct participant
@@ -174,6 +185,10 @@ messages to synthetic contacts.
   All fixtures roll back.
 - `002_seed_synthetic_demo.sql`: idempotent synthetic demo data (see above). Run it
   after the migration with the same `psql` options.
+- `003_participant_measurements_view.sql`: adds `analytics.participant_measurements`.
+  Safe to re-run.
+- `tests/participant_measurements.sql`: read-only checks for that view (one row per
+  expected answer, no rejected or superseded values, role access).
 - `verify.sql`: read-only structural validation and aggregate table inventory.
 
 Run as a database administrator with a securely configured connection:
@@ -199,7 +214,8 @@ The directory is root-only (`0700`) and dump files are `0600`.
 `clinical_trials.dump` is the first backup, successfully restored before schema
 testing. `pre-replacement.dump` is the fresh backup taken immediately before the
 final migration rehearsal/deployment. `pre-seed.dump` is the migrated, empty
-database taken immediately before the demo seed.
+database taken immediately before the demo seed. `pre-003-view.dump` is the seeded
+database taken immediately before `003`.
 
 For recovery, first restore the chosen custom-format dump into a **new** database
 using `pg_restore --exit-on-error --single-transaction`. Verify it before changing

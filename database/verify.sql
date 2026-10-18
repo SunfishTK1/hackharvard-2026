@@ -5,8 +5,10 @@ BEGIN
   IF (SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname IN ('public','private','audit')) <> 24 THEN
     RAISE EXCEPTION 'Expected 23 project tables plus schema_migrations';
   END IF;
-  IF (SELECT count(*) FROM pg_catalog.pg_views WHERE schemaname='analytics') <> 6 THEN
-    RAISE EXCEPTION 'Expected six analytics views';
+  IF (SELECT count(*) FROM pg_catalog.pg_views WHERE schemaname='analytics')
+     <> (CASE WHEN EXISTS (SELECT 1 FROM public.schema_migrations WHERE version='003_participant_measurements_view')
+          THEN 7 ELSE 6 END) THEN
+    RAISE EXCEPTION 'Unexpected number of analytics views';
   END IF;
   IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname IN ('trial','clinical','core','patient_agent','manager_agent')) THEN
     RAISE EXCEPTION 'Old application schemas remain';
