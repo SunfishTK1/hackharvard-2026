@@ -15,6 +15,9 @@ services:
       PORT: "3010"
       ROUTER_PORT: "3011"
       TRIAL_OPS_API_PORT: "3012"
+      # HackHarvard demo only: managers can sign in to the ops website with their number and full name
+      # (they're texted each time). Remove after judging; Face ID and texted links keep working.
+      TRIAL_OPS_WEB_SELF_VOUCH: "1"
       # Consent-signed emails go to this address instead of the investigators' on file (synthetic staff).
       PI_EMAIL: bl108@wellesley.edu
       # Verified in Resend (DNS on Cloudflare: resend._domainkey and send.hackharvard).

@@ -1,8 +1,10 @@
-// Agentic mode: the Trial Ops workspace inside the ops site, for a signed-in trial manager (sign-in is a
-// link Trial Ops texts to their phone). The server proxies /api/agent/* to the Trial Ops API
-// (agent-proxy.ts); the workspace itself is in src/agent/.
+// Agentic mode: the Trial Ops workspace inside the ops site, for a signed-in trial manager. They sign
+// in with a link Trial Ops texts to their phone, with Face ID (a passkey for this site, added once
+// they're in), or, in demos, with their number and full name. The server proxies /api/agent/* to the
+// Trial Ops API (agent-proxy.ts); the workspace itself is in src/agent/.
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Me } from "./agent-types";
+import { passkeysSupported, signInWithFaceId } from "./agent/faceid";
 import { Workspace } from "./agent/Workspace";
 import { peekPending } from "./ask";
 import "./agentic.css";
@@ -40,10 +42,36 @@ export function normalizePhone(raw: string): string | null {
   return /^\+[1-9]\d{6,14}$/.test(e164) ? e164 : null;
 }
 
-function SignIn({ error }: { error?: string }) {
+function SignIn({ error, onSignedIn }: { error?: string; onSignedIn: () => void }) {
   const saved = peekPending();
   const [phone, setPhone] = useState("+1 ");
-  const [state, setState] = useState<{ kind: "idle" | "sending" | "sent"; error?: string }>({ kind: "idle", error });
+  const [name, setName] = useState("");
+  const [state, setState] = useState<{ kind: "idle" | "sending" | "sent" | "face-id" | "vouching"; error?: string }>({ kind: "idle", error });
+  const [methods, setMethods] = useState<{ faceId: boolean; selfVouch: boolean }>({ faceId: false, selfVouch: false });
+  const [vouchOpen, setVouchOpen] = useState(false);
+  useEffect(() => {
+    void api<{ faceId: boolean; selfVouch: boolean }>("sign-in-methods").then((r) => r.ok && setMethods({ faceId: Boolean(r.body.faceId), selfVouch: Boolean(r.body.selfVouch) }));
+  }, []);
+  const busy = state.kind === "sending" || state.kind === "face-id" || state.kind === "vouching";
+  const faceId = async () => {
+    setState({ kind: "face-id" });
+    try {
+      await signInWithFaceId(normalizePhone(phone));
+      onSignedIn();
+    } catch (err) {
+      setState({ kind: "idle", error: err instanceof Error ? err.message : "Face ID didn't sign you in." });
+    }
+  };
+  const vouch = async (e: FormEvent) => {
+    e.preventDefault();
+    const e164 = normalizePhone(phone);
+    if (!e164) return setState({ kind: "idle", error: "Enter your phone number with country code, like +1 617 555 0123." });
+    if (name.trim().split(/\s+/).length < 2) return setState({ kind: "idle", error: "Enter your first and last name, as on your Trial Ops account." });
+    setState({ kind: "vouching" });
+    const r = await api<{ manager: unknown }>("vouch", { method: "POST", body: { phone: e164, name: name.trim() } });
+    if (r.ok) return onSignedIn();
+    setState({ kind: "idle", error: r.body.error ?? "That didn't sign you in. Try again." });
+  };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const e164 = normalizePhone(phone);
@@ -85,16 +113,34 @@ function SignIn({ error }: { error?: string }) {
         />
         <div id="agent-phone-hint" className="signin-hint">With country code. US numbers work without the +1.</div>
         {state.error && <div className="signin-error" role="alert">{state.error}</div>}
-        <button type="submit" className="pill" disabled={state.kind === "sending"}>
+        <button type="submit" className="pill" disabled={busy}>
           {state.kind === "sending" ? "Sending…" : "Text me a sign-in link"}
         </button>
+        {methods.faceId && passkeysSupported() && (
+          <button type="button" className="pill soft" disabled={busy} onClick={() => void faceId()}>
+            {state.kind === "face-id" ? "Waiting for Face ID…" : "Sign in with Face ID"}
+          </button>
+        )}
       </form>
+      {methods.selfVouch && (vouchOpen ? (
+        <form className="signin vouch" onSubmit={vouch} noValidate>
+          <label htmlFor="agent-name" className="signin-label">Full name</label>
+          <input id="agent-name" className="signin-input" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="As on your Trial Ops account" aria-describedby="agent-name-hint" />
+          <div id="agent-name-hint" className="signin-hint">Demo sign-in: your number above and your name vouch for you. Trial Ops texts you that you signed in.</div>
+          <button type="submit" className="pill soft" disabled={busy}>{state.kind === "vouching" ? "Signing in…" : "Sign in without a text"}</button>
+        </form>
+      ) : (
+        <button type="button" className="link-button vouch-link" onClick={() => setVouchOpen(true)}>Sign in without a text (demo)</button>
+      ))}
     </section>
   );
 }
 
 export function Agentic({ onAccount }: { onAccount: (name: string | null) => void }) {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  // Bumped after Face ID or a demo sign-in, to load who they are.
+  const [attempt, setAttempt] = useState(0);
 
   const signedOut = useCallback((error?: string) => {
     onAccount(null);
@@ -124,7 +170,7 @@ export function Agentic({ onAccount }: { onAccount: (name: string | null) => voi
     return () => {
       cancelled = true;
     };
-  }, [onAccount, signedOut]);
+  }, [onAccount, signedOut, attempt]);
 
   if (phase.kind === "loading") return <div className="status" role="status"><p>Opening Trial Ops…</p></div>;
   if (phase.kind === "offline") {
@@ -136,6 +182,6 @@ export function Agentic({ onAccount }: { onAccount: (name: string | null) => voi
       </section>
     );
   }
-  if (phase.kind === "signed-out") return <SignIn error={phase.error} />;
+  if (phase.kind === "signed-out") return <SignIn error={phase.error} onSignedIn={() => { setPhase({ kind: "loading" }); setAttempt((n) => n + 1); }} />;
   return <Workspace me={phase.me} onSignedOut={() => signedOut("Your session ended. Sign in again.")} />;
 }

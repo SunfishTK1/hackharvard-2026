@@ -30,6 +30,10 @@
 .signin-error { font-size: 15px; color: #1D1D1F; font-weight: 600; }
 .signin .pill { justify-content: center; margin-top: 8px; }
 .pill:disabled { opacity: 0.5; cursor: default; }
+.signin .pill.soft { margin-top: 0; background: rgba(0,0,0,0.06); color: #1D1D1F; }
+.signin .pill.soft:hover { background: rgba(0,0,0,0.1); color: #1D1D1F; }
+.signin.vouch { margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.08); }
+.vouch-link { margin-top: 20px; font-size: 15px; }
 
 /* Messages */
 .suggestions { display: flex; flex-wrap: wrap; gap: 8px; }

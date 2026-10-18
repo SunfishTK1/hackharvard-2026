@@ -32,7 +32,10 @@ Dates and "yesterday" use `America/New_York` (`DISPLAY_TZ`).
 - **Notifications**: which alerts Trial Ops texts about, and the morning briefing.
 - **From Classic**: every actionable item has an "Ask Trial Ops" link that switches here and sends the question. It's kept through sign-in.
 
-Sign-in: the manager enters their phone number and Trial Ops texts a one-time link to it, but only to phones an administrator linked (`npm run ops:link` in Patient-AI-Agent). The link lands on `?mode=agentic&signin=…`, and the session is then kept in an `HttpOnly`, `SameSite=Lax` cookie for 7 days.
+Sign-in, three ways, all ending in an `HttpOnly`, `SameSite=Lax` session cookie kept for 7 days:
+- **Texted link:** the manager enters their phone number and Trial Ops texts a one-time link to it, but only to phones an administrator linked (`npm run ops:link` in Patient-AI-Agent). The link lands on `?mode=agentic&signin=…`.
+- **Face ID:** "Sign in with Face ID" uses a passkey for this site. Managers turn it on once they're signed in (Notifications › Sign in with Face ID); a passkey made for a website decision works too.
+- **Demo sign-in (HackHarvard only):** "Sign in without a text" takes the linked number and the full name on the account, with no other check. It only appears while Trial Ops has `TRIAL_OPS_WEB_SELF_VOUCH=1`; the manager is texted every time it's used. Remove that setting after judging.
 
 `agent-proxy.ts`: the browser only calls this site under `/api/agent/*` (its route table lists every path). The server calls the same path under `/v1/` on the Trial Ops API (`TRIAL_OPS_API_URL`, default `http://patient-assistant:3012` on the `web` network). It sends `TRIAL_OPS_API_TOKEN`, the session, and `X-Ops-Origin` (this site's origin from `PUBLIC_URL`). Trial Ops checks the origin against its allowed web origins and picks the Face ID relying party from it. Bodies are capped at 16 KB (64 KB for Face ID responses), and cross-site POSTs are refused. Sign-in links are limited to 5 per IP every 10 minutes and use `PUBLIC_URL`, so a forged Host header can't redirect them. The code lives in `src/agent/` (`Workspace.tsx`, `views/`, `Decide.tsx`, `faceid.ts`, `Chat.tsx`, `CommandBar.tsx`, `workspace.css`).
 

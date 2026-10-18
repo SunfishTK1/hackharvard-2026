@@ -123,6 +123,9 @@ const ROUTES: { method: "GET" | "POST"; path: RegExp; timeoutMs?: number; maxBod
   { method: "POST", path: /^ask-sage$/, timeoutMs: 20_000 },
   { method: "GET", path: /^prefs$/ },
   { method: "POST", path: /^prefs$/ },
+  // Face ID sign-in: add a passkey for this device.
+  { method: "POST", path: /^passkeys\/options$/ },
+  { method: "POST", path: /^passkeys\/verify$/, timeoutMs: 60_000, maxBody: WEBAUTHN_BODY },
 ];
 
 export function agentProxy(env: Env) {
@@ -199,17 +202,48 @@ export function agentProxy(env: Env) {
         send(res, r.status, r.body);
         return true;
       }
+      // Any way of signing in ends the same: Trial Ops starts a session, kept in the HttpOnly cookie.
+      const sessionFrom = (r: Upstream) => {
+        const ok = r.status === 200 && typeof (r.body as { session?: unknown }).session === "string";
+        if (!ok) return send(res, r.status === 200 ? 502 : r.status, r.status === 200 ? { error: "Trial Ops didn't start a session." } : r.body);
+        const { session: value, manager } = r.body as { session: string; manager: unknown };
+        send(res, 200, { manager }, { "Set-Cookie": sessionCookie(req, value, WEEK_SECONDS) });
+      };
+      const typedPhone = (typed: unknown) => {
+        const digits = typeof typed === "string" ? typed.replace(/[\s().-]/g, "") : "";
+        return /^\d{10}$/.test(digits) ? `+1${digits}` : digits;
+      };
       if (route === "session" && method === "POST") {
         const body = await readBody(req);
         if (typeof body.token !== "string" || body.token.length > 200) throw new HttpError(400, "That sign-in link isn't valid.");
-        const r = await upstream("POST", "/v1/web/session", { body: { token: body.token }, origin });
-        const ok = r.status === 200 && typeof (r.body as { session?: unknown }).session === "string";
-        if (!ok) {
-          send(res, r.status === 200 ? 502 : r.status, r.status === 200 ? { error: "Trial Ops didn't start a session." } : r.body);
-          return true;
-        }
-        const { session: value, manager } = r.body as { session: string; manager: unknown };
-        send(res, 200, { manager }, { "Set-Cookie": sessionCookie(req, value, WEEK_SECONDS) });
+        sessionFrom(await upstream("POST", "/v1/web/session", { body: { token: body.token }, origin }));
+        return true;
+      }
+      if (route === "sign-in-methods" && method === "GET") {
+        const r = await upstream("GET", "/v1/web/sign-in-methods", { origin });
+        send(res, r.status, r.body);
+        return true;
+      }
+      // Face ID: the browser signs a challenge with a passkey it holds for this site.
+      if (route === "face-id/options" && method === "POST") {
+        const { phone } = await readBody(req);
+        const r = await upstream("POST", "/v1/web/face-id/options", { body: { phone: typedPhone(phone) }, origin });
+        send(res, r.status, r.body);
+        return true;
+      }
+      if (route === "face-id/verify" && method === "POST") {
+        const { nonce, response } = await readBody(req, WEBAUTHN_BODY);
+        sessionFrom(await upstream("POST", "/v1/web/face-id/verify", { body: { nonce, response }, origin, timeoutMs: 60_000 }));
+        return true;
+      }
+      // Demo only (when Trial Ops allows it): the linked number and full name vouch for the person.
+      if (route === "vouch" && method === "POST") {
+        if (rateLimited(clientIp(req))) throw new HttpError(429, "Too many sign-in attempts. Wait a few minutes.");
+        const { phone, name } = await readBody(req);
+        const e164 = typedPhone(phone);
+        if (!/^\+[1-9]\d{6,14}$/.test(e164)) throw new HttpError(400, "Enter your phone number with country code, like +1 617 555 0123.");
+        if (typeof name !== "string" || name.trim().length < 3 || name.length > 120) throw new HttpError(400, "Enter your full name as it's on your Trial Ops account.");
+        sessionFrom(await upstream("POST", "/v1/web/vouch", { body: { phone: e164, name }, origin }));
         return true;
       }
       if (route === "sign-out" && method === "POST") {

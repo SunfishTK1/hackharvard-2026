@@ -2,13 +2,18 @@
 // reachable only on the Docker network and only with the shared token (TRIAL_OPS_API_TOKEN). The
 // calling app's server holds the token; browsers never see it or this port.
 //
-// Managers sign in with a link texted to their phone by Trial Ops; the session that link starts is
-// what the app sends as X-Ops-Session. Chat goes through the same core and the same conversation as
-// iMessage, so a manager picks up on the web where they left off in Messages, and the other way round.
+// Managers sign in with a link texted to their phone by Trial Ops, or with Face ID (a passkey for the
+// site, added once they're signed in), or in demos with their number and full name; the session that
+// starts is what the app sends as X-Ops-Session. Chat goes through the same core and the same
+// conversation as iMessage, so a manager picks up on the web where they left off in Messages.
 //   POST /v1/web/sign-in {phone, returnTo}   -> {ok, message}      texts a one-time link (15 min)
 //   POST /v1/web/session {token}             -> {session, expiresAt, manager}
+//   GET  /v1/web/sign-in-methods             -> {faceId, selfVouch}
+//   POST /v1/web/face-id/options {phone?}, /v1/web/face-id/verify {nonce, response} -> a session
+//   POST /v1/web/vouch {phone, name}         -> a session (only with TRIAL_OPS_WEB_SELF_VOUCH=1; texts the manager)
 //   POST /v1/web/sign-out                    -> {ok}
-//   GET  /v1/me                              -> {name, manager, studies, computers}
+//   GET  /v1/me                              -> {name, manager, studies, computers, faceIdSignIn}
+//   POST /v1/passkeys/options, /v1/passkeys/verify {response}  adds a Face ID sign-in passkey for this device
 //   GET  /v1/messages?after=&limit=          -> {messages}          the conversation, oldest first
 //   POST /v1/chat {message}                  -> {reply: {text, links}}
 //   GET  /v1/views/<view>?study=&code=&id=   -> the mini-app's view JSON
@@ -134,6 +139,18 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort, followUp
       // The same answer either way, so the form doesn't reveal who is a manager.
       return send(res, 200, { ok: true, message: `If that number is linked to ${config.ops.name}, a sign-in link is on its way in Messages.` });
     }
+    // A web session for a manager who proved who they are (texted link, Face ID or, in demos, their word).
+    const startSession = async (m: store.Manager, how: "link" | "face_id" | "self_vouched") => {
+      const session = randomBytes(32).toString("base64url");
+      const [row] = await ops<{ expires_at: Date }>("insert into ops.web_sessions (token_hash, manager_id) values ($1, $2) returning expires_at", [hash(session), m.id]);
+      await store.audit(ops, m.id, "web_signed_in", { how }, meta(req));
+      return send(res, 200, { session, expiresAt: row.expires_at, manager: { name: m.displayName } });
+    };
+    const siteRp = () => {
+      const rp = approvals.websiteRp(String(req.headers["x-ops-origin"] ?? "") || undefined);
+      if (!rp) throw new ApiError(400, "This site can't use Face ID with Trial Ops (X-Ops-Origin).");
+      return rp;
+    };
     if (method === "POST" && path === "/v1/web/session") {
       const b = await body(req);
       const token = String(b.token ?? "");
@@ -141,10 +158,35 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort, followUp
         "update ops.web_signins set used_at = now() where token_hash = $1 and used_at is null and expires_at > now() returning manager_id", [hash(token)]) : [];
       const m = s && (await store.managerById(ops, s.manager_id));
       if (!m) throw new ApiError(401, "That sign-in link has expired or was already used. Ask for a new one.");
-      const session = randomBytes(32).toString("base64url");
-      const [row] = await ops<{ expires_at: Date }>("insert into ops.web_sessions (token_hash, manager_id) values ($1, $2) returning expires_at", [hash(session), m.id]);
-      await store.audit(ops, m.id, "web_signed_in", {});
-      return send(res, 200, { session, expiresAt: row.expires_at, manager: { name: m.displayName } });
+      return startSession(m, "link");
+    }
+    if (method === "GET" && path === "/v1/web/sign-in-methods") return send(res, 200, { faceId: true, selfVouch: config.ops.webSelfVouch });
+    if (method === "POST" && path === "/v1/web/face-id/options") {
+      const b = await body(req);
+      const phone = String(b.phone ?? "").replace(/[\s().-]/g, "");
+      return send(res, 200, await approvals.signInOptions(siteRp(), PHONE.test(phone) ? phone : undefined));
+    }
+    if (method === "POST" && path === "/v1/web/face-id/verify") {
+      const b = await body(req);
+      const m = await approvals.signInVerify(siteRp(), String(b.nonce ?? ""), b.response as never, meta(req)).catch((error) => {
+        if (error instanceof approvals.ApprovalError) throw new ApiError(401, error.message);
+        throw error;
+      });
+      return startSession(m, "face_id");
+    }
+    // Demo only (TRIAL_OPS_WEB_SELF_VOUCH=1): their linked number and full name vouch for them. The
+    // manager is texted every time, so a sign-in that wasn't them doesn't go unnoticed.
+    if (method === "POST" && path === "/v1/web/vouch") {
+      if (!config.ops.webSelfVouch) throw new ApiError(404, "Not found.");
+      const b = await body(req);
+      const phone = String(b.phone ?? "").replace(/[\s().-]/g, "");
+      const name = String(b.name ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+      const m = PHONE.test(phone) ? await store.managerByHandle(ops, phone) : undefined;
+      if (!m || !name || name !== m.displayName.trim().replace(/\s+/g, " ").toLowerCase()) {
+        throw new ApiError(401, "That number and name don't match a Trial Ops account. Check both, or text yourself a link.");
+      }
+      agent.notify(m.id, `You signed in to ${config.ops.name} on the web with your name and number (no link or Face ID). If that wasn't you, tell your Trial Ops admin right away.`);
+      return startSession(m, "self_vouched");
     }
     if (method === "POST" && path === "/v1/web/sign-out") {
       const token = String(req.headers["x-ops-session"] ?? "");
@@ -155,7 +197,18 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort, followUp
     // Signed in -----------------------------------------------------------------------------------
     const m = await sessionManager(req);
     if (method === "GET" && path === "/v1/me") {
-      return send(res, 200, { name: config.ops.name, manager: { name: m.displayName }, studies: await store.managerStudies(ops, m.id), computers: Boolean(core.analyst) });
+      const rp = approvals.websiteRp(String(req.headers["x-ops-origin"] ?? "") || undefined);
+      return send(res, 200, {
+        name: config.ops.name, manager: { name: m.displayName }, studies: await store.managerStudies(ops, m.id), computers: Boolean(core.analyst),
+        faceIdSignIn: rp ? await approvals.hasSitePasskey(m, rp) : false,
+      });
+    }
+    // Face ID sign-in for this site: add a passkey for this device.
+    if (method === "POST" && path === "/v1/passkeys/options") return send(res, 200, await approvals.addPasskeyOptions(m, siteRp()));
+    if (method === "POST" && path === "/v1/passkeys/verify") {
+      const b = await body(req);
+      await approvals.addPasskeyVerify(m, siteRp(), b.response as never, meta(req)).catch(rethrow);
+      return send(res, 200, { ok: true });
     }
     // Decisions on the website: Face ID with the site's own passkeys, or typed name, one or several at once.
     const site = () => {

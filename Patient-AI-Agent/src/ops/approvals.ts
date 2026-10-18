@@ -252,6 +252,64 @@ async function options(m: Manager, key: string, rp: RelyingParty, newDevice = fa
   return { mode, options: opts };
 }
 
+// Signing in to the ops website with Face ID ------------------------------------------------------
+
+const signIns = new Map<string, { challenge: string; rpId: string; expires: number }>();
+
+/**
+ * WebAuthn options to sign in on the website. With a phone number, the manager's own passkeys are
+ * offered; without one, the browser shows the site passkeys it holds. The answer is the same either
+ * way, so it doesn't reveal who is a manager.
+ */
+export async function signInOptions(rp: RelyingParty, handle?: string) {
+  const m = handle ? await store.managerByHandle(ops, handle) : undefined;
+  const keys = m ? await passkeys(ops, m.id, rp) : [];
+  const opts = await generateAuthenticationOptions({
+    rpID: rp.id, userVerification: "required",
+    allowCredentials: keys.map((p) => ({ id: p.credential_id, transports: (p.transports ?? undefined) as never })),
+  });
+  const nonce = randomUUID();
+  for (const [k, v] of signIns) if (v.expires < Date.now()) signIns.delete(k);
+  signIns.set(nonce, { challenge: opts.challenge, rpId: rp.id, expires: Date.now() + CHALLENGE_TTL_MS });
+  return { nonce, options: opts };
+}
+
+/** Checks a Face ID sign-in; returns the manager whose passkey answered. */
+export async function signInVerify(rp: RelyingParty, nonce: string, response: AuthenticationResponseJSON, meta: Meta): Promise<Manager> {
+  const pending = signIns.get(nonce);
+  signIns.delete(nonce);
+  if (!pending || pending.expires < Date.now() || pending.rpId !== rp.id) throw new ApprovalError("That took too long. Try again.");
+  const [p] = await ops<{ id: string; manager_id: string; credential_id: string; public_key: Buffer; counter: string; transports: string[] | null }>(
+    `select id, manager_id, credential_id, public_key, counter, transports from ops.passkeys
+     where credential_id = $1 and (rp_id = $2 or (rp_id is null and $2 = $3))`, [String(response?.id ?? ""), rp.id, MINI_APPS.id]);
+  if (!p) throw new ApprovalError("That passkey isn't set up for Trial Ops on this site. Sign in with a texted link once, then turn on Face ID sign-in.");
+  const result = await verifyAuthenticationResponse({
+    response, expectedChallenge: pending.challenge, expectedOrigin: rp.origin, expectedRPID: rp.id, requireUserVerification: true,
+    credential: { id: p.credential_id, publicKey: new Uint8Array(p.public_key), counter: Number(p.counter), transports: (p.transports ?? undefined) as never },
+  }).catch(() => ({ verified: false, authenticationInfo: undefined }));
+  if (!result.verified || !result.authenticationInfo) throw new ApprovalError("Face ID didn't match. Try again.");
+  const m = await store.managerById(ops, p.manager_id);
+  if (!m) throw new ApprovalError("That Trial Ops account isn't active.");
+  await ops("update ops.passkeys set counter = $2, last_used_at = now() where id = $1", [p.id, result.authenticationInfo.newCounter]);
+  await store.audit(ops, m.id, "web_signed_in_face_id", { passkey_id: p.id, origin: rp.origin }, meta);
+  return m;
+}
+
+/** Whether the manager has a passkey for this site (so Face ID sign-in works). */
+export async function hasSitePasskey(m: Manager, rp: RelyingParty): Promise<boolean> {
+  return (await passkeys(ops, m.id, rp)).length > 0;
+}
+
+/** WebAuthn options to add a site passkey for this device, from a signed-in session. */
+export function addPasskeyOptions(m: Manager, rp: RelyingParty) {
+  return options(m, `${rp.id}:${m.id}:add-passkey`, rp, true);
+}
+
+/** Saves the site passkey made from addPasskeyOptions. */
+export async function addPasskeyVerify(m: Manager, rp: RelyingParty, response: RegistrationResponseJSON, meta: Meta): Promise<void> {
+  await checkFaceId(m, `${rp.id}:${m.id}:add-passkey`, response, rp, meta);
+}
+
 /** WebAuthn options for one decision. */
 export async function faceIdOptions(m: Manager, approvalId: string, rp: RelyingParty = MINI_APPS, newDevice = false) {
   return options(m, `${rp.id}:${m.id}:${approvalId}`, rp, newDevice);

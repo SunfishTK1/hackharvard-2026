@@ -145,6 +145,11 @@ export const config = {
       const labels = new URL(publicUrl).hostname.split(".");
       return labels.length > 2 ? labels.slice(1).join(".") : labels.join(".");
     },
+    /**
+     * Demo only: lets someone sign in to the ops website with their linked phone number and full name,
+     * without the texted link or Face ID. The manager is texted each time. Leave unset outside demos.
+     */
+    webSelfVouch: pick("TRIAL_OPS_WEB_SELF_VOUCH") === "1",
     /** Where a web sign-in link may send the manager back to. */
     webOrigins: (pick("TRIAL_OPS_WEB_ORIGINS") ?? "https://ops.hackharvard2026.velroi.com,http://localhost:3000,http://localhost:5173")
       .split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),

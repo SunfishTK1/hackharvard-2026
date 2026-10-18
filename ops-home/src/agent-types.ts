@@ -22,6 +22,8 @@ export interface Me {
   manager: { name: string };
   studies: { code: string; role: string }[];
   computers: boolean;
+  /** Whether they have a passkey for this site, so Face ID can sign them in. */
+  faceIdSignIn?: boolean;
 }
 
 export type AnalysisPhase = "starting" | "installing" | "loading" | "analyzing" | "saving" | "done" | "failed" | "cancelled";

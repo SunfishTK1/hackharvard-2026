@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { AgentLink, AgentMessage, Me } from "../agent-types";
 import { takePending } from "../ask";
 import { Chat, isDecision } from "./Chat";
+import { passkeysSupported } from "./faceid";
 import { DanceParty } from "./Dance";
 import { CommandBar } from "./CommandBar";
 import { routeForLink, routeFromUrl, urlFor, useData, WorkspaceContext, type Page, type Route, type Workspace as Ctx } from "./core";
@@ -136,6 +137,18 @@ export function Workspace({ me, onSignedOut }: { me: Me; onSignedOut: () => void
   }, [toast, changed, chatOpen]);
 
   const ctx = useMemo<Ctx>(() => ({ me, go, ask, toast, open, version, changed }), [me, go, ask, toast, open, version, changed]);
+
+  // Once per browser: point people without Face ID sign-in to the setting.
+  useEffect(() => {
+    if (me.faceIdSignIn !== false || !passkeysSupported()) return;
+    try {
+      if (localStorage.getItem("ops-face-id-nudge")) return;
+      localStorage.setItem("ops-face-id-nudge", "1");
+    } catch {
+      return;
+    }
+    toast("Skip the texted link next time: turn on Face ID sign-in.", { route: { page: "notifications", params: {} } });
+  }, [me.faceIdSignIn, toast]);
 
   const p = route.params;
   const view = (() => {

@@ -67,3 +67,32 @@ export async function overrideOne(approvalId: string, name: string, note?: strin
   if (!r.ok) throw new FaceIdError(r.body.error ?? "That didn't go through.");
   return r.body.approval;
 }
+
+/** Signs in with Face ID: a passkey for this site. With a phone number, only that person's passkeys are offered. */
+export async function signInWithFaceId(phone: string | null): Promise<void> {
+  const o = await call<{ nonce: string; options: never }>("face-id/options", { body: phone ? { phone } : {} });
+  if (!o.ok) throw new FaceIdError(o.body.error ?? "Face ID couldn't start.");
+  let response;
+  try {
+    response = await startAuthentication({ optionsJSON: o.body.options });
+  } catch (err) {
+    const e = explain(err);
+    throw e.cancelled ? new FaceIdError("Face ID was cancelled, or this device has no Trial Ops passkey yet. Text yourself a link once, then turn on Face ID sign-in.", true) : e;
+  }
+  const v = await call<{ manager: unknown }>("face-id/verify", { body: { nonce: o.body.nonce, response } });
+  if (!v.ok) throw new FaceIdError(v.body.error ?? "Face ID didn't sign you in.");
+}
+
+/** Adds a passkey for this device, so Face ID signs them in next time. */
+export async function addSignInPasskey(): Promise<void> {
+  const o = await call<{ options: never }>("passkeys/options", { body: {} });
+  if (!o.ok) throw new FaceIdError(o.body.error ?? "Face ID couldn't start.");
+  let response;
+  try {
+    response = await startRegistration({ optionsJSON: o.body.options });
+  } catch (err) {
+    throw explain(err);
+  }
+  const v = await call<{ ok: boolean }>("passkeys/verify", { body: { response } });
+  if (!v.ok) throw new FaceIdError(v.body.error ?? "Face ID couldn't be set up.");
+}
