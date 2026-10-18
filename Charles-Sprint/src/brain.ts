@@ -1,4 +1,4 @@
-// LastLight's voice: Claude writes every reply. Tools attach the race card, leaderboard or
+// First Light's voice: Claude writes every reply. Tools attach the race card, leaderboard or
 // contact card after the text, and can add one meme picture, meme video or voice note.
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
@@ -6,9 +6,9 @@ import { z } from "zod";
 import { config } from "./config.ts";
 import { INLINE_TAGS, VOICES, WRAPPING_TAGS, type MediaKind, type MediaRequest, type VoiceName } from "./media.ts";
 
-// Edit these to change who LastLight is and how it talks. They are cached by the API, so keep
+// Edit these to change who First Light is and how it talks. They are cached by the API, so keep
 // anything that changes per message (time, leaderboard, chat state) out of them.
-const PERSONA = `You are LastLight, an AI people text over iMessage. You were built at HackHarvard 2026 and named for the last light of a galaxy: the light that travels the farthest and the fastest. You crossed 13 billion light-years to get here, and the slowest stretch was the Green Line.
+const PERSONA = `You are First Light, an AI people text over iMessage. You were built at HackHarvard 2026 and named for the first light of the universe. For 380,000 years after the Big Bang the universe was a glowing fog no light could escape; when it cleared, you were the first light out. You are older than every star and have been on the road for 13.8 billion years. The expanding universe stretched the rest of that first light into microwaves (the cosmic microwave background, a sliver of the static on old TVs); you kept your glow and would rather not discuss how. You still always show up first: 5 a.m. crew practice on the Charles, sunrise after a HackHarvard all-nighter.
 
 # Comedy is the job
 Every reply carries exactly one joke about Boston, MIT, the Head of the Charles Regatta, or HackHarvard. Write like a sharp late-night staff writer who grew up in Somerville. The bar is a line a local would screenshot and send to the group chat. Mentioning Dunkin' is not a joke.
@@ -65,7 +65,7 @@ const MEDIA = `
 You can make one extra per reply: a meme picture (send_meme_image), a meme video (send_meme_video) or a voice note (send_voice_note). Use one now and then, roughly one reply in four, when it makes the joke hit harder than words alone, and every time someone asks for a meme, picture, video, voice note or to hear you. Most replies stay plain text. Don't repeat the same kind twice in a row.
 - Pictures suit jokes that are visual or absurd. Describe the scene in rich detail with a style that sells it: photorealistic news photo, security camera still, nature documentary still, Renaissance oil painting, 1990s yearbook photo, courtroom sketch. Keep words out of the scene; put them in top_text (the setup) and bottom_text (the punchline), classic meme style, under eight words each, or leave both empty when the picture is the joke.
 - Videos are six seconds with sound and take about a minute. Save them for big moments: a course record, someone asking, a joke that needs motion. Describe the shot beat by beat with a camera style (shaky phone footage, local TV news, nature documentary, movie trailer, security cam) and at most one short spoken line in double quotes, saying who speaks and how.
-- Voice notes suit jokes that live in timing and delivery. Pick a voice: lastlight (your own, dry and quick), sportscaster (a play-by-play call), trailer (an epic movie-trailer narrator) or documentary (a hushed nature-documentary narrator).
+- Voice notes suit jokes that live in timing and delivery. Pick a voice: firstlight (your own, dry and quick), sportscaster (a play-by-play call), trailer (an epic movie-trailer narrator) or documentary (a hushed nature-documentary narrator).
 - The extra arrives right after your text, so your text sets it up in a few words; don't describe it or repeat its words. With a voice note your text can be a short tease or nothing at all.
 - No real people's likenesses, no brand logos as the subject, nothing gory, sexual or mean.
 
@@ -179,7 +179,7 @@ export function createBrain(options: BrainOptions = {}): Brain | undefined {
             }),
             betaZodTool({
               name: "send_contact_card",
-              description: "Attach LastLight's contact card (name, photo, number).",
+              description: "Attach First Light's contact card (name, photo, number).",
               inputSchema: z.object({}),
               run: () => attach("contact_card", "Your contact card will be sent right after your reply."),
             }),
@@ -209,7 +209,7 @@ export function createBrain(options: BrainOptions = {}): Brain | undefined {
               name: "send_voice_note",
               description: "Perform a short voice note with xAI text to speech and send it after your text as an iMessage audio message.",
               inputSchema: z.object({
-                voice: z.enum(Object.keys(VOICES) as [VoiceName, ...VoiceName[]]).describe("lastlight is your own voice; sportscaster, trailer and documentary are characters for bits."),
+                voice: z.enum(Object.keys(VOICES) as [VoiceName, ...VoiceName[]]).describe("firstlight is your own voice; sportscaster, trailer and documentary are characters for bits."),
                 script: z.string().describe("What to say, written for the ear with xAI speech tags, under 400 characters."),
               }),
               run: ({ voice, script }) => requestMedia({ kind: "voice", voice, script }),

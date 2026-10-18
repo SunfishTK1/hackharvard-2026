@@ -1,4 +1,4 @@
-// LastLight's memes and voice notes, made with xAI: Grok Imagine draws meme pictures and films
+// First Light's memes and voice notes, made with xAI: Grok Imagine draws meme pictures and films
 // short meme videos, and Grok text to speech performs voice notes written with speech tags.
 import { captionImage } from "./captions.ts";
 
@@ -10,9 +10,9 @@ const VIDEO_RESOLUTION = env("XAI_VIDEO_RESOLUTION") ?? "720p";
 const VIDEO_SECONDS = 6;
 const VIDEO_TIMEOUT_MS = 5 * 60_000;
 
-/** Characters LastLight can speak as. The key is what Claude picks; the value is the xAI voice. */
+/** Characters First Light can speak as. The key is what Claude picks; the value is the xAI voice. */
 export const VOICES = {
-  lastlight: "sirius",
+  firstlight: "sirius",
   sportscaster: "helix",
   trailer: "zagan",
   documentary: "orion",
@@ -24,7 +24,7 @@ export const INLINE_TAGS = ["pause", "long-pause", "laugh", "chuckle", "giggle",
 export const WRAPPING_TAGS = ["whisper", "soft", "loud", "emphasis", "slow", "fast", "higher-pitch", "lower-pitch", "build-intensity", "decrease-intensity", "sing-song", "singing"] as const;
 
 // Spoken substitutions for words the voice gets wrong; the written script keeps the spelling.
-const PRONOUNCE = { HackHarvard: "Hack Harvard", HOCR: "Head of the Charles", LastLight: "Last Light" };
+const PRONOUNCE = { HackHarvard: "Hack Harvard", HOCR: "Head of the Charles", FirstLight: "First Light" };
 
 export type MediaRequest =
   | { kind: "image"; scene: string; top?: string; bottom?: string }
@@ -71,8 +71,8 @@ export function createMedia(apiKey: string | undefined): Media | undefined {
     if (!picture?.b64_json) throw new Error("xAI returned no image");
     const bytes = Buffer.from(picture.b64_json, "base64");
     const mimeType = picture.mime_type ?? "image/jpeg";
-    if (!captioned) return { bytes, name: "lastlight-meme.jpg", mimeType };
-    return { bytes: captionImage(bytes, mimeType, top, bottom), name: "lastlight-meme.jpg", mimeType: "image/jpeg" };
+    if (!captioned) return { bytes, name: "firstlight-meme.jpg", mimeType };
+    return { bytes: captionImage(bytes, mimeType, top, bottom), name: "firstlight-meme.jpg", mimeType: "image/jpeg" };
   }
 
   async function video(scene: string): Promise<MediaFile> {
@@ -96,7 +96,7 @@ export function createMedia(apiKey: string | undefined): Media | undefined {
       if (body.status !== "done" || !body.video?.url) throw new Error(`xAI video ${body.status}: ${JSON.stringify(body.error ?? body).slice(0, 300)}`);
       const file = await fetch(body.video.url, { signal: AbortSignal.timeout(60_000) });
       if (!file.ok) throw new Error(`video download ${file.status}`);
-      return { bytes: Buffer.from(await file.arrayBuffer()), name: "lastlight-meme.mp4", mimeType: "video/mp4" };
+      return { bytes: Buffer.from(await file.arrayBuffer()), name: "firstlight-meme.mp4", mimeType: "video/mp4" };
     }
     throw new Error("xAI video timed out");
   }
@@ -104,12 +104,12 @@ export function createMedia(apiKey: string | undefined): Media | undefined {
   async function speech(voice: VoiceName, script: string): Promise<MediaFile> {
     const response = await post("/tts", {
       text: cleanScript(script),
-      voice_id: VOICES[voice] ?? VOICES.lastlight,
+      voice_id: VOICES[voice] ?? VOICES.firstlight,
       language: "en",
       output_format: { codec: "mp3", sample_rate: 44100, bit_rate: 128000 },
       replace: PRONOUNCE,
     });
-    return { bytes: Buffer.from(await response.arrayBuffer()), name: "lastlight.mp3", mimeType: "audio/mpeg" };
+    return { bytes: Buffer.from(await response.arrayBuffer()), name: "firstlight.mp3", mimeType: "audio/mpeg" };
   }
 
   return {

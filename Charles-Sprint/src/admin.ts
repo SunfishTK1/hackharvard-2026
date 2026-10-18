@@ -2,6 +2,7 @@
 // agent (which can then update those cards in place).
 import { createServer } from "node:http";
 import type { Agent } from "./agent.ts";
+import type { MediaRequest } from "./media.ts";
 
 export function startAdmin(agent: Agent, port: number) {
   const server = createServer(async (req, res) => {
@@ -9,12 +10,23 @@ export function startAdmin(agent: Agent, port: number) {
     try {
       const chunks: Buffer[] = [];
       for await (const chunk of req as AsyncIterable<Buffer>) chunks.push(chunk);
-      const { to, kind, file, caption } = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { to?: string; kind?: string; file?: string; caption?: string };
+      const { to, kind, file, caption, request } = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        to?: string;
+        kind?: string;
+        file?: string;
+        caption?: string;
+        request?: MediaRequest;
+      };
       if (!to || !/^\+\d{8,15}$/.test(to)) return void res.writeHead(400).end("need to: +15551234567\n");
+      if (kind === "media") {
+        if (!request || !["image", "video", "voice"].includes(request.kind)) return void res.writeHead(400).end('need request: {"kind":"image"|"video"|"voice",...}\n');
+        await agent.sendMediaTo(to, request, caption);
+        return void res.writeHead(200).end("queued; watch the log for the send\n");
+      }
       if (kind === "file") {
         if (!file) return void res.writeHead(400).end("need file: /path/in/container\n");
         await agent.sendFileTo(to, file, caption);
-      } else await agent.sendTo(to, kind === "native" || kind === "web" || kind === "contact" ? kind : undefined);
+      } else await agent.sendTo(to, kind === "native" || kind === "web" || kind === "contact" ? kind : undefined, caption);
       res.writeHead(200).end("sent\n");
     } catch (error) {
       res.writeHead(500).end(`${error instanceof Error ? error.message : String(error)}\n`);

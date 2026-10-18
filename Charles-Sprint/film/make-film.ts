@@ -1,11 +1,11 @@
-// "LastLight: Origin", a one-minute film about where LastLight came from. Narration is xAI text to
-// speech with speech tags, every shot starts from a Grok Imagine keyframe and is animated by Grok
+// "First Light: Origin", a one-minute film about where First Light came from. Narration is xAI text
+// to speech with speech tags, every shot starts from a Grok Imagine keyframe and is animated by Grok
 // Imagine video, and ffmpeg cuts it together with crossfades, a sound bed and a title card.
 //
 //   XAI_API_KEY=... node film/make-film.ts
 //
-// Everything lands in film/out/. A step whose file already exists is skipped, so delete a file to
-// redo just that piece (for example out/shot-3.mp4 to re-film shot 3).
+// Everything lands in film/out/first-light/. A step whose file already exists is skipped, so delete
+// a file to redo just that piece (for example shot-3.mp4 to re-film shot 3).
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -17,17 +17,17 @@ const run = promisify(execFile);
 const API = "https://api.x.ai/v1";
 const KEY = process.env.XAI_API_KEY;
 if (!KEY) throw new Error("set XAI_API_KEY");
-const OUT = join(import.meta.dirname, "out");
-const AVATAR = join(import.meta.dirname, "..", "public", "lastlight.png");
+const OUT = join(import.meta.dirname, "out", "first-light");
+const AVATAR = join(import.meta.dirname, "..", "public", "firstlight.png");
 const VIDEO_MODEL = "grok-imagine-video-1.5";
 const W = 1280;
 const H = 720;
 /** Crossfade between shots, seconds. */
 const X = 0.5;
 
-const VOICE = { trailer: "zagan", documentary: "orion", lastlight: "sirius" } as const;
+const VOICE = { trailer: "zagan", documentary: "orion", firstlight: "sirius" } as const;
 // The narrator voices are slow and grand by default; a touch faster keeps the cut near a minute.
-const SPEED: Record<keyof typeof VOICE, number> = { trailer: 1.1, documentary: 1.12, lastlight: 1.0 };
+const SPEED: Record<keyof typeof VOICE, number> = { trailer: 1.1, documentary: 1.12, firstlight: 1.0 };
 /** Longest cut we accept, seconds. Checked before any keyframe or shot is paid for. */
 const MAX_LENGTH = 66;
 type Line = { voice: keyof typeof VOICE; text: string };
@@ -35,13 +35,13 @@ type Line = { voice: keyof typeof VOICE; text: string };
 // Every keyframe shares this look so the shots read as one film.
 const LOOK =
   "Epic cinematic film still, shot on IMAX 65mm with anamorphic lenses, deep inky blacks, volumetric light, subtle film grain, " +
-  "a palette of deep indigo, violet and black with one warm gold-white light. The hero, LastLight, is a single photon: " +
-  "a brilliant gold-white point of light with a thin violet-blue comet trail. No text, letters or logos anywhere.";
+  "a palette of black and deep indigo warming to dawn gold, amber and rose. The hero, First Light, is a single photon: " +
+  "a brilliant gold-white point of light with a soft starburst and a short warm amber trail. No text, letters or logos anywhere.";
 const QUIET = "No voices, no dialogue, no singing, no on-screen text.";
 
 interface Shot {
   lines: Line[];
-  /** What the first frame shows. Omitted for the title shot, which starts from the avatar. */
+  /** What the first frame shows. Without one, the shot starts from the avatar padded to 16:9. */
   frame?: string;
   /** How the shot moves and sounds. */
   motion: string;
@@ -49,57 +49,57 @@ interface Shot {
 
 const SHOTS: Shot[] = [
   {
-    lines: [{ voice: "trailer", text: "<slow><lower-pitch>Before time. Before space.</lower-pitch></slow> [pause] There was only <whisper>a spark.</whisper>" }],
-    frame: "An infinite pure black void. Dead center, one tiny gold-white point of light with the faintest violet halo. Nothing else exists. Vast negative space.",
+    lines: [{ voice: "trailer", text: "<slow><lower-pitch>Before the stars. Before the sun.</lower-pitch></slow> [pause] Before anyone could see <whisper>anything.</whisper>" }],
+    frame: "An infinite pure black void. Dead center, one tiny gold-white point of light with the faintest warm halo. Nothing else exists. Vast negative space.",
     motion: `Extremely slow push-in toward the point of light. It pulses twice like a heartbeat, each pulse brighter. Sound: near silence, then a low sub-bass hum swelling. ${QUIET}`,
   },
   {
-    lines: [{ voice: "trailer", text: "[inhale] <build-intensity>And then, everything happened at once.</build-intensity>" }],
-    frame: "The instant of the Big Bang: a blinding gold-white eruption at the center of the frame, shockwaves of violet and amber plasma tearing outward, billions of streaks of light radiating toward the camera.",
-    motion: `The light detonates. A blinding sphere expands and rushes at the camera, countless photons streak past the lens, heavy camera shake. Sound: a colossal deep boom and a roaring rush. ${QUIET}`,
+    lines: [{ voice: "trailer", text: "[inhale] <build-intensity>Then everything began at once.</build-intensity>" }],
+    frame: "The instant of the Big Bang: a blinding gold-white eruption at the center of the frame, shockwaves of amber, rose and crimson plasma tearing outward, billions of streaks of light radiating toward the camera.",
+    motion: `The light detonates. A blinding sphere expands and rushes at the camera, countless sparks streak past the lens, heavy camera shake. Sound: a colossal deep boom and a roaring rush. ${QUIET}`,
   },
   {
-    lines: [{ voice: "documentary", text: "For three hundred eighty thousand years, the universe was a fog. [pause] Every photon, <soft>trapped.</soft>" }],
-    frame: "Inside the newborn universe: a dense glowing orange and crimson plasma fog fills the frame, trillions of tiny sparks of light trapped inside it. In the foreground, the gold-white hero photon with its violet-blue trail presses against the haze.",
-    motion: `Slow drifting camera through the glowing fog. Sparks ricochet off one another. The gold-white hero photon darts forward and is knocked back by the fog. Sound: a dense, muffled crackling roar. ${QUIET}`,
+    lines: [{ voice: "documentary", text: "For three hundred eighty thousand years, the universe was a glowing fog. [pause] <soft>No light could get out.</soft>" }],
+    frame: "Inside the newborn universe: a dense glowing orange and crimson plasma fog fills the frame, trillions of tiny sparks of light trapped inside it. In the foreground, the gold-white hero photon with its warm amber trail presses against the haze.",
+    motion: `Slow drifting camera through the glowing fog. Sparks ricochet off one another. The gold-white hero photon darts forward and is knocked back by the fog, again and again. Sound: a dense, muffled crackling roar. ${QUIET}`,
   },
   {
-    lines: [{ voice: "trailer", text: "Then the fog lifted. [pause] <build-intensity>And the greatest race in history began.</build-intensity>" }],
-    frame: "The fog dissolving into clear black space: a vast wave of countless photons breaking free, with the gold-white hero photon and its violet-blue trail at the very front, ahead of all the others.",
-    motion: `The fog clears in a rush. The camera races alongside the hero photon as it accelerates and overtakes a sea of other lights. Exhilarating speed. Sound: a rising whoosh and swelling orchestral strings. ${QUIET}`,
-  },
-  {
-    lines: [
-      { voice: "documentary", text: "<soft>One by one, the others stopped, to light the first stars.</soft>" },
-      { voice: "lastlight", text: "<whisper>Not me.</whisper>" },
-    ],
-    frame: "Deep space at the dawn of the cosmos: all around, lights settle into newborn stars and young spiral galaxies glowing gold and blue, while the single gold-white hero photon with its violet-blue trail streaks straight through the middle.",
-    motion: `Tracking shot following the hero photon. One by one, the lights around it peel away and bloom into newborn stars. The hero keeps going, alone. Sound: shimmering, soft celestial tones. ${QUIET}`,
-  },
-  {
-    lines: [{ voice: "trailer", text: "Past dying stars. Around black holes. [breath] <slow>Thirteen billion years of dark.</slow>" }],
-    frame: "A colossal black hole with a blazing orange accretion disk, space visibly warped by gravitational lensing, and the tiny gold-white hero photon with its violet-blue trail skimming the edge of the event horizon.",
-    motion: `The hero photon dives toward the black hole, bends around the event horizon in a tight slingshot and escapes into the dark beyond. The camera follows, rotating. Sound: a deep groaning gravitational rumble. ${QUIET}`,
-  },
-  {
-    lines: [{ voice: "documentary", text: "Until it reached the edge of everything. [pause] A small blue planet. <slow>A river called the Charles.</slow>" }],
-    frame: "Night aerial view high above Boston and Cambridge: the Charles River glowing under city lights, the Harvard Bridge strung with lights, the MIT Great Dome, a deep star-filled sky above, and a single gold-white streak of light falling from the stars toward the river.",
-    motion: `The streak of light falls from the stars toward the river city, and the camera descends with it over the Charles River at night. Sound: high wind, then the soft hum of a city at night. ${QUIET}`,
-  },
-  {
-    lines: [{ voice: "lastlight", text: "Hi. [pause] I'm LastLight. <soft>I came a long way to say that.</soft>" }],
-    frame: "A dark hackathon room at 4 a.m.: laptops, empty energy drink cans, a tired student in a hoodie holding a phone, face softly lit. Through the window, a gold-white point of light streaks in. The phone screen shows only a soft warm glow, no interface.",
-    motion: `The gold-white light streaks through the window and into the phone. The screen blooms with warm golden light across the student's face, and they slowly smile. Sound: a soft crystal chime, then quiet room tone. ${QUIET}`,
+    lines: [{ voice: "trailer", text: "Then the fog cleared. [pause] <build-intensity>And one light got out first.</build-intensity>" }],
+    frame: "The glowing orange fog tearing open into clear black space: the gold-white hero photon bursting through the opening first, a brilliant starburst, with a vast wave of other lights still behind it in the haze.",
+    motion: `The fog rips open. The hero photon bursts out into clear dark space first, and the camera races alongside it as the fog falls away behind. Exhilarating speed. Sound: a rising whoosh and swelling orchestral strings. ${QUIET}`,
   },
   {
     lines: [
-      { voice: "trailer", text: "LastLight. [pause] <slow>The farthest light. The fastest light.</slow>" },
-      { voice: "lastlight", text: "[sigh] Honestly? The slowest part was the Green Line." },
+      { voice: "documentary", text: "<soft>It is older than every star. Every galaxy. Every sunrise.</soft>" },
+      { voice: "firstlight", text: "[tsk] <whisper>I was here first.</whisper>" },
     ],
-    motion: `The galaxy slowly rotates and glows brighter, stars twinkle, and the camera slowly pulls back into the infinite dark. Sound: a deep, warm resonant swell that fades out. ${QUIET}`,
+    frame: "Deep space at the dawn of the cosmos: behind the gold-white hero photon, the very first stars ignite one by one in blue and gold, and young galaxies begin to swirl, while the hero streaks ahead of them all.",
+    motion: `Tracking shot following the hero photon. Behind it, the first stars flare to life one by one and galaxies begin to spin. The hero stays out in front, alone. Sound: shimmering, soft celestial tones. ${QUIET}`,
+  },
+  {
+    lines: [{ voice: "trailer", text: "Thirteen billion years across the dark. [breath] <slow>Stretched thin. Cooled down. Still going.</slow>" }],
+    frame: "The vast expanding universe: galaxies receding in every direction, and the hero photon's long trail stretching across the frame, glowing gold-white at its head and shifting to deep red and crimson along its length.",
+    motion: `The universe expands: galaxies drift apart and the hero's trail stretches longer and redder, but the gold-white point at its head keeps racing forward. Slow rotating camera. Sound: a deep, slow, groaning swell. ${QUIET}`,
+  },
+  {
+    lines: [{ voice: "documentary", text: "Until one morning, it reached a small blue planet, and a river called the Charles. [pause] <soft>At first light.</soft>" }],
+    frame: "Dawn over the Charles River in Boston: soft mist on the water, the Boston skyline and the brick boathouses as dark silhouettes, a rowing eight gliding through the mist, and the first gold-white ray of sunrise breaking over the horizon.",
+    motion: `The sun's first ray breaks the horizon and a line of gold light sweeps across the misty river, catching the oars of the rowing eight as it glides past. Slow aerial drift. Sound: oars dipping, birds, a soft morning hush. ${QUIET}`,
+  },
+  {
+    lines: [{ voice: "firstlight", text: "Morning. [pause] I'm First Light. <soft>I've been on my way since the beginning.</soft>" }],
+    frame: "A hackathon room at sunrise: laptops, empty energy drink cans, a tired student in a hoodie holding a phone. Through the window, the first gold sunlight streams in. The phone screen shows only a soft warm glow, no interface.",
+    motion: `A beam of first sunlight crosses the room and lands on the phone. The screen blooms with warm golden light across the student's face, and they slowly smile. Sound: a soft crystal chime, then quiet room tone. ${QUIET}`,
+  },
+  {
+    lines: [
+      { voice: "trailer", text: "First Light. [pause] <slow>The oldest light in the universe.</slow>" },
+      { voice: "firstlight", text: "[sigh] Thirteen billion years on the road, and I still beat the Red Line." },
+    ],
+    frame: "A brilliant gold-white sunburst cresting the dark curved horizon of a planet seen from space, its first rays fanning upward and outward, a deep violet-indigo sky fading to black above, rose and amber glow along the horizon. Centered, iconic composition.",
+    motion: `The sunburst slowly rises over the horizon and its rays bloom brighter, the glow spreading along the curve of the planet, and the camera slowly pulls back into the dark. Sound: a deep, warm resonant swell that fades out. ${QUIET}`,
   },
 ];
-
 const auth = { Authorization: `Bearer ${KEY}` };
 const log = (...args: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...args);
 
@@ -141,7 +141,7 @@ async function speak(line: Line, file: string): Promise<void> {
     language: "en",
     speed: SPEED[line.voice],
     output_format: { codec: "wav", sample_rate: 48000 },
-    replace: { LastLight: "Last Light" },
+    replace: { FirstLight: "First Light" },
   });
   await writeFile(file, Buffer.from(await response.arrayBuffer()));
   log("voice", file);
@@ -210,9 +210,9 @@ function titleCard(file: string): Promise<void> {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
 <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.75"/></linearGradient></defs>
 <rect width="${W}" height="${H}" fill="url(#fade)"/>
-<text x="${W / 2}" y="${H - 150}" text-anchor="middle" font-family="Avenir Next" font-weight="700" font-size="92" letter-spacing="22" fill="#fff">LASTLIGHT</text>
-<text x="${W / 2}" y="${H - 96}" text-anchor="middle" font-family="Avenir Next" font-weight="500" font-size="30" letter-spacing="4" fill="#e9dcff">THE FARTHEST LIGHT. THE FASTEST LIGHT.</text>
-<text x="${W / 2}" y="${H - 52}" text-anchor="middle" font-family="Avenir Next" font-weight="500" font-size="22" letter-spacing="3" fill="#bfb3d9">TEXT IT ON IMESSAGE · HACKHARVARD 2026</text>
+<text x="${W / 2}" y="${H - 150}" text-anchor="middle" font-family="Avenir Next" font-weight="700" font-size="92" letter-spacing="22" fill="#fff">FIRST LIGHT</text>
+<text x="${W / 2}" y="${H - 96}" text-anchor="middle" font-family="Avenir Next" font-weight="500" font-size="30" letter-spacing="4" fill="#ffe9cc">THE OLDEST LIGHT IN THE UNIVERSE.</text>
+<text x="${W / 2}" y="${H - 52}" text-anchor="middle" font-family="Avenir Next" font-weight="500" font-size="22" letter-spacing="3" fill="#d9c3b3">TEXT IT ON IMESSAGE · HACKHARVARD 2026</text>
 </svg>`;
   const png = new Resvg(svg, { font: { loadSystemFonts: true, defaultFontFamily: "Avenir Next" } }).render().asPng();
   return writeFile(file, png);
@@ -276,7 +276,7 @@ SHOTS.forEach((shot, i) => {
   });
 });
 graph.push(`[bed]${voices.join("")}amix=inputs=${voices.length + 1}:normalize=0:duration=first,loudnorm=I=-16:TP=-1.5:LRA=11,afade=out:st=${(total - 1.5).toFixed(3)}:d=1.5[aout]`);
-const final = path("lastlight-origin.mp4");
+const final = path("firstlight-origin.mp4");
 await run("ffmpeg", [
   "-y", "-v", "error", ...inputs, "-filter_complex", graph.join(";"), "-map", "[vout]", "-map", "[aout]",
   "-t", total.toFixed(3), "-c:v", "libx264", "-crf", "20", "-preset", "slow", "-pix_fmt", "yuv420p",

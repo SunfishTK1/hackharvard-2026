@@ -1,4 +1,4 @@
-// The iMessage side. LastLight answers every text through Claude (always with a Boston, MIT,
+// The iMessage side. First Light answers every text through Claude (always with a Boston, MIT,
 // Head of the Charles or HackHarvard joke) and attaches the race card, leaderboard or its contact
 // card when that helps, plus now and then a meme picture, meme video or voice note made with xAI.
 // Races started from a chat's card update that card in place and are announced in the chat.
@@ -90,15 +90,15 @@ export class Agent {
     }
   }
 
-  /** Sends a fresh race card, or the agent's contact card, to one phone number (admin "send"). */
-  async sendTo(phone: string, what?: Delivery): Promise<void> {
+  /** Sends a fresh race card, or the agent's contact card after an intro, to one phone number (admin "send"). */
+  async sendTo(phone: string, what?: Delivery, intro?: string): Promise<void> {
     if (!this.app) throw new Error("agent is not connected yet");
     const im = imessage(this.app);
     const space = await im.space.create(await im.user(phone));
     let failure: unknown;
     await this.enqueue(space.id, async () => {
       try {
-        await (what === "contact" ? this.sendContact(space) : this.sendCard(space, what));
+        await (what === "contact" ? this.sendContact(space, intro) : this.sendCard(space, what));
       } catch (error) {
         failure = error;
       }
@@ -129,6 +129,19 @@ export class Agent {
       }
     });
     if (failure) throw failure;
+  }
+
+  /**
+   * Sends one meme or voice note to a phone number (admin "media"), after an optional caption.
+   * Skips the cooldowns and returns once it is queued; the result shows in the log.
+   */
+  async sendMediaTo(phone: string, request: MediaRequest, caption?: string): Promise<void> {
+    if (!this.app) throw new Error("agent is not connected yet");
+    if (!this.media) throw new Error("no XAI_API_KEY, so no memes or voice notes");
+    const im = imessage(this.app);
+    const space = await im.space.create(await im.user(phone));
+    if (caption) await this.enqueue(space.id, () => this.deliver(space, caption, []));
+    this.sendMedia(space, request);
   }
 
   /** A race posted from the game opened on a chat's card. */
@@ -184,7 +197,7 @@ export class Agent {
     const command = text.toLowerCase();
     if (/^(top|board|leaderboard|scores?|ranks?)\b/.test(command)) return this.deliver(space, randomJoke(), ["leaderboard"]);
     if (/^(help|info)\b|^\?$/.test(command)) return this.deliver(space, `${HELP}\n\n${randomJoke()}`, []);
-    if (/^(contact|vcard|lastlight|who)\b/.test(command)) return this.deliver(space, randomJoke(), ["contact_card"]);
+    if (/^(contact|vcard|first ?light|last ?light|who)\b/.test(command)) return this.deliver(space, randomJoke(), ["contact_card"]);
     return this.deliver(space, randomJoke(), ["race_card"], kind);
   }
 
@@ -212,8 +225,10 @@ export class Agent {
   }
 
   /** Intro plus contact card, for sends nobody asked for in the chat. */
-  private async sendContact(space: Space): Promise<void> {
-    const intro = `I'm ${AGENT_NAME}. Save my contact so my texts show my name and photo. Text anything for a Charles Sprint race.`;
+  private async sendContact(
+    space: Space,
+    intro = `I'm ${AGENT_NAME}. Save my contact so my texts show my name and photo. Text anything for a Charles Sprint race.`,
+  ): Promise<void> {
     await space.send(intro);
     this.remember(space.id, "assistant", intro);
     await this.sendContactCard(space);
@@ -255,7 +270,7 @@ export class Agent {
     return message;
   }
 
-  /** Tells the chat about a finished race, in LastLight's voice; confetti for course records. */
+  /** Tells the chat about a finished race, in First Light's voice; confetti for course records. */
   private async announceResult(space: Space, result: RaceResult): Promise<void> {
     const rank = this.board.rankOf(result.time);
     const record = this.board.record!;

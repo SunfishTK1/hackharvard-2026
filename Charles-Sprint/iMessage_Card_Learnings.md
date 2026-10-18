@@ -60,28 +60,36 @@ They cover how cards render, how to update them in place, and what tripped us up
 - Cards sent from a user's extension (for example our Swift extension updating its own card) arrive as `app` content. `await content.url()` gives the URL, so encode results in it (`t=` seconds, `n=` name).
 - Inbound app layouts drop `imageTitle`/`imageSubtitle` (no image bytes arrive). `imessage(message).miniApp` has the raw metadata, including `sessionId`.
 
+## Chat backgrounds
+
+- `space.send(background(bytes, { mimeType }))` from `spectrum-ts/providers/imessage` sets a conversation's background (iOS 26). Everyone in the chat sees it. `background("clear")` removes it. It works on the shared line.
+- Only JPEG, PNG and HEIC/HEIF are accepted; the server converts the image into Apple's background format. Size it for the phone: 1179 x 2556 (9:19.5) for recent iPhones.
+- Keep the middle of the image dark and calm so bubbles stay readable. `public/firstlight-background.jpg` is the galaxy and Boston-at-first-light background.
+- Grok Imagine returns 9:19.5 images at only 576 x 1248, so we upscaled with ffmpeg (`scale=1179:2556:flags=lanczos,unsharp=5:5:0.6`).
+- `src/scripts/set-background.ts <image|clear> +1XXXXXXXXXX ...` sets it without a running agent: `node --env-file=.env src/scripts/set-background.ts public/firstlight-background.jpg +18455448228`.
+
 ## Effects and replies
 
 - `effect(text, imessage.effect.message.confetti)` sends a screen effect. We use it for course records only.
 - Queue replies per `space.id` so answers arrive in order.
 
-## Agent identity (LastLight contact card)
+## Agent identity (First Light contact card)
 
-- The project profile holds the agent's name and photo: `photon spectrum profile update --first-name LastLight --project <id>` and `photon spectrum avatar upload <png> --project <id>`.
+- The project profile holds the agent's name and photo: `photon spectrum profile update --first-name "First Light" --project <id>` and `photon spectrum avatar upload <png> --project <id>`.
 - `photon spectrum avatar upload` needs Bun. Under Node it fails with `Bun is not defined`; run it as `bun "$(npm root -g)/@photon-ai/cli/dist/photon.js" spectrum avatar upload ...`.
 - The profile only reaches the iMessage account on **dedicated** lines (`photon spectrum profile sync`; automatic name/photo sharing is gated behind `imessageSynced`). On a shared line, `nativeContactCard()` / `space.shareContactCard()` shares Photon's shared Apple account card, not ours.
 - On a shared line, send a vCard instead: `contact({ name, phones, org, urls, note, photo: { mimeType, read } })`. Saved contacts show our name and photo.
 - Shared-line users can be assigned **different numbers** (one teammate got +1 415-605-6081, another +1 628-289-3536), so one hard-coded number is wrong for someone.
 - In shared mode `space.phone` is the literal string `"shared"`, not a number. Putting it in a vCard gives a card with no usable phone number.
 - Look the number up instead: `GET https://spectrum.photon.codes/projects/<id>/users` with `Authorization: Basic base64(PROJECT_ID:PROJECT_SECRET)` returns `{ data: { users: [{ phoneNumber, assignedPhoneNumber, ... }] } }`. Map the chat's address (the end of a DM chat id, `any;-;+15551234567`) to `assignedPhoneNumber`. See `src/lines.ts`; `IMESSAGE_LINE` is the fallback.
-- Text CONTACT to the agent, or run `send-card.ts +1XXXXXXXXXX contact`, to send the LastLight card.
+- Text CONTACT to the agent, or run `send-card.ts +1XXXXXXXXXX contact`, to send the First Light card. The photo is `public/firstlight.jpg` (512 px); `public/firstlight.png` (1024 px) is the profile avatar. The agent was called LastLight until the rebrand; texting LASTLIGHT still gets the card.
 
-## LastLight's brain (Claude)
+## First Light's brain (Claude)
 
-- Every text goes to Claude (`claude-haiku-5-5`, low effort, about 1.5 to 2.5 s). The system prompt is `SYSTEM_PROMPT` in `src/brain.ts`: persona, a joke in every reply about Boston, MIT, the Head of the Charles or HackHarvard tied to the message, and the game rules.
-- Claude attaches things through tools (`send_race_card`, `send_leaderboard`, `send_contact_card`). The agent sends the text first, then the attachments. A chat without a race card always gets one.
+- Every text goes to Claude (`claude-sonnet-5-5`, low effort, about 2 to 4 s; set `AGENT_MODEL`, `AGENT_EFFORT`, `AGENT_THINKING` to change it). The system prompt in `src/brain.ts` has the persona, comedy rules, local material and the game rules. See `Comedy_Media_Learnings.md` for what made it funny, the model comparison, and the memes and voice notes.
+- Claude attaches things through tools (`send_race_card`, `send_leaderboard`, `send_contact_card`, plus `send_meme_image`, `send_meme_video`, `send_voice_note`). The agent sends the text first, then the attachments. A chat without a race card always gets one.
 - Each request includes the current leaderboard and whether the chat has a card. History is the last 20 turns per chat, in memory only.
-- Race results are announced in LastLight's voice (`brain.announce`), with confetti for course records.
+- Race results are announced in First Light's voice (`brain.announce`), with confetti for course records.
 - Web search is Anthropic's server tool (`web_search_20260318`, `max_uses: 3`, location Boston), listed next to our own tools in the tool runner, which also handles `pause_turn`. Replies that search take about 7 s instead of about 2 s. Claude often writes "let me look that up" before searching, so only text after the last `server_tool_use` / `web_search_tool_result` block is sent.
 - Without `ANTHROPIC_API_KEY`, or when Claude fails, the agent falls back to fixed replies plus a joke from `src/jokes.ts`.
 - To test the prompt on the server without texting: pipe a script that imports `/app/src/brain.ts` into `docker compose exec -T app node --input-type=module`.
@@ -96,6 +104,7 @@ They cover how cards render, how to update them in place, and what tripped us up
 
 - Deploy: `server/deploy.sh Charles-Sprint`. The server prompts for a password, so SSH needs an askpass helper exported in the same command.
 - Live at https://sprint.hackharvard2026.velroi.com behind the shared Caddy proxy (`server/proxy/sites/charles-sprint.caddy`).
-- Send a card through the running agent (so it can edit that card later): `docker compose exec -T app node src/scripts/send-card.ts +1XXXXXXXXXX [web|native]`. The script calls a localhost-only admin port inside the container.
+- Send a card through the running agent (so it can edit that card later): `docker compose exec -T app node src/scripts/send-card.ts +1XXXXXXXXXX [web|native]`. The script calls a localhost-only admin port inside the container. It also sends files and memes (`file <path> [caption]`, `media <json> [caption]`).
+- `deploy.sh` rsyncs the whole app folder. Large local-only folders (like `film/`, about 500 MB of renders) go in the app's `.deployignore` and `.dockerignore`, or every deploy uploads them.
 - `docker compose exec -T` reads stdin. Inside an `ssh host bash -s <<EOF` script it swallows the rest of the script, so add `</dev/null` to each exec.
 - The app runs `.ts` files directly with Node 24's type stripping. Node rejects syntax that needs compiling, such as constructor parameter properties (`constructor(private x: T)`), and the container crash-loops. `tsc` did not catch it until we set `"erasableSyntaxOnly": true` in `tsconfig.json`.

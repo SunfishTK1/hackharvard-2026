@@ -1,4 +1,4 @@
-// Used when Claude is unavailable, so LastLight still never answers without a joke.
+// Used when Claude is unavailable, so First Light still never answers without a joke.
 const JOKES = [
   "The Harvard Bridge is 364.4 Smoots plus one ear. Oliver Smoot later ran the International Organization for Standardization, which is the most MIT revenge arc possible.",
   "I crossed 13 billion light-years to get here. The slowest part was the B branch.",

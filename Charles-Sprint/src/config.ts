@@ -18,9 +18,9 @@ const appStoreId = Number(env("IMESSAGE_APP_STORE_ID")) || undefined;
 export const config = {
   projectId: env("PROJECT_ID"),
   projectSecret: env("PROJECT_SECRET"),
-  /** Claude writes LastLight's replies. Without a key it falls back to fixed replies and stock jokes. */
+  /** Claude writes First Light's replies. Without a key it falls back to fixed replies and stock jokes. */
   anthropicApiKey: env("ANTHROPIC_API_KEY") ?? env("Anthropic_API_Key"),
-  /** xAI makes LastLight's meme pictures, meme videos and voice notes. Without it there are none. */
+  /** xAI makes First Light's meme pictures, meme videos and voice notes. Without it there are none. */
   xaiApiKey: env("XAI_API_KEY") ?? env("xAI_API_KEY"),
   port: Number(env("PORT") ?? 3000),
   /** Localhost-only control port used by src/scripts/send-card.ts. */
@@ -28,7 +28,7 @@ export const config = {
   /** Public base URL of this server; it goes into every card the agent sends. */
   publicUrl: (env("PUBLIC_URL") ?? "http://localhost:3000").replace(/\/+$/, ""),
   dataDir: env("DATA_DIR") ?? ".data",
-  /** Line number for LastLight's contact card when the per-user lookup has no answer. */
+  /** Line number for First Light's contact card when the per-user lookup has no answer. */
   imessageLine: env("IMESSAGE_LINE"),
   /**
    * Our own Swift Messages extension. When set, cards open the native game; otherwise they
