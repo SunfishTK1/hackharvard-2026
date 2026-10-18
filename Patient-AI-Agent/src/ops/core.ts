@@ -135,9 +135,10 @@ export class OpsCore {
 
   /** A mini-app link for a manager, with live numbers for its card. */
   async link(m: store.Manager, view: View, params: Record<string, string>, text: Partial<OpsCardText> = {}, query?: string): Promise<OpsLink> {
-    const card = await store.createCard(ops, m.id, view, params, text.headline ?? VIEW_TITLES[view]);
     const given = Object.fromEntries(Object.entries(text).filter(([, v]) => v)) as Partial<OpsCardText>;
-    return { cardId: card.id, view, params, title: card.title, url: `${config.publicUrl}/o/${card.token}${query ? `?${query}` : ""}`, text: { ...(await this.cardText(view, params)), ...given } };
+    const copy = { ...(await this.cardText(view, params)), ...given };
+    const card = await store.createCard(ops, m.id, view, params, copy.headline ?? VIEW_TITLES[view]);
+    return { cardId: card.id, view, params, title: card.title, url: `${config.publicUrl}/o/${card.token}${query ? `?${query}` : ""}`, text: copy };
   }
 
   /** The iMessage card for a link. */

@@ -91,6 +91,8 @@ const show = (...nodes) => {
   const isBar = (n) => n.classList?.contains("actionbar");
   clearTimeout(skeleton);
   document.body.dataset.page = opts.page ?? "gray";
+  // Quiet updates (polling) must not replay the entrance animation on the new nodes.
+  if (opts.quiet) app.classList.remove("fade-in");
   dock.replaceChildren(...flat.filter(isBar));
   app.replaceChildren(...flat.filter((n) => !isBar(n)));
   if (opts.quiet) return;

@@ -159,8 +159,11 @@ export function agentProxy(env: Env) {
       // Signing in and out.
       if (route === "sign-in" && method === "POST") {
         if (rateLimited(clientIp(req))) throw new HttpError(429, "Too many sign-in links. Wait a few minutes.");
-        const { phone } = await readBody(req);
-        if (typeof phone !== "string" || !/^\+[1-9]\d{6,14}$/.test(phone)) throw new HttpError(400, "Enter your phone number with country code, like +1 617 555 0123.");
+        const { phone: typed } = await readBody(req);
+        // People type numbers with spaces, dashes and brackets; a 10-digit number is taken as US.
+        const digits = typeof typed === "string" ? typed.replace(/[\s().-]/g, "") : "";
+        const phone = /^\d{10}$/.test(digits) ? `+1${digits}` : digits;
+        if (!/^\+[1-9]\d{6,14}$/.test(phone)) throw new HttpError(400, "Enter your phone number with country code, like +1 617 555 0123.");
         const r = await upstream("POST", "/v1/web/sign-in", { body: { phone, returnTo: `${siteOrigin(req, env)}/?mode=agentic` } });
         send(res, r.status, r.body);
         return true;
