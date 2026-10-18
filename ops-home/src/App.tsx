@@ -1,56 +1,16 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import Alerts from "./pages/Alerts";
+import Calendar from "./pages/Calendar";
+import Journeys from "./pages/Journeys";
+import Participant from "./pages/Participant";
+import Reported from "./pages/Reported";
+import Site from "./pages/Site";
+import StudiesPage from "./pages/Studies";
+import Study from "./pages/Study";
+import { BLUE, Footer, Header, INK, MUTED, PANEL, Source, TopPriorities, s, usePath, useShowAll, useSources } from "./ui";
 import type { BlindSpot, Change, HomeData, PipelinePoint, StudyRow, WaitingGroup, WaitingPerson } from "./types";
 
-const AGENTIC_URL = "https://trial-manager.hackharvard2026.velroi.com";
 const REFRESH_MS = 5 * 60_000;
-
-const INK = "#1D1D1F";
-const MUTED = "rgba(0,0,0,0.56)";
-const BLUE = "#0071E3";
-const PANEL = "#F5F5F7";
-
-const s = {
-  eyebrow: { fontSize: 15, fontWeight: 600, color: MUTED } as CSSProperties,
-  h2: { margin: 0, fontSize: 40, fontWeight: 600, letterSpacing: "-0.02em" } as CSSProperties,
-  lede: { margin: "0 0 20px", fontSize: 17, color: MUTED, maxWidth: 720 } as CSSProperties,
-  section: { maxWidth: 1200, margin: "0 auto", padding: "72px 24px 40px", display: "flex", flexDirection: "column", gap: 10 } as CSSProperties,
-  source: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, color: MUTED } as CSSProperties,
-  muted: { color: MUTED } as CSSProperties,
-};
-
-function Source({ show, children, style }: { show: boolean; children: ReactNode; style?: CSSProperties }) {
-  return show ? <div style={{ ...s.source, ...style }}>{children}</div> : null;
-}
-
-function Header() {
-  const link: CSSProperties = { display: "flex", alignItems: "center", minHeight: 48, color: INK, textDecoration: "none" };
-  const nav: Array<[string, string | null]> = [
-    ["Studies", "#studies"], ["Journeys", "#pipeline"], ["Reported data", "#blind-spots"],
-    ["Alerts", "#waiting"], ["Messages", null], ["Documents", null],
-  ];
-  return (
-    <header className="topbar">
-      <nav aria-label="Primary" className="topnav">
-        <a href="#top" aria-current="page" className="brand">
-          <span aria-hidden="true" className="brand-mark" />Trial Ops
-        </a>
-        <div className="topnav-links">
-          {nav.map(([label, href]) =>
-            href ? (
-              <a key={label} href={href} style={link}>{label}</a>
-            ) : (
-              <span key={label} style={{ ...link, color: "rgba(0,0,0,0.32)" }} title="Coming soon">{label}</span>
-            ),
-          )}
-        </div>
-        <div role="group" aria-label="Mode" className="mode-toggle">
-          <a href="#top" aria-current="page" className="mode-on">Classic</a>
-          <a href={AGENTIC_URL} className="mode-off">Agentic</a>
-        </div>
-      </nav>
-    </header>
-  );
-}
 
 function Hero({ data }: { data: HomeData }) {
   return (
@@ -59,8 +19,8 @@ function Hero({ data }: { data: HomeData }) {
       <h1 className="hero-title">{data.hero.headline[0]}<br />{data.hero.headline[1]}</h1>
       <p className="hero-body">{data.hero.body}</p>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px 28px", marginTop: 10 }}>
-        <a href="#changed" className="pill">See what changed</a>
-        <a href="#pipeline" style={{ fontSize: 17, textDecoration: "none" }}>Every participant’s journey →</a>
+        <a href="#priorities-title" className="pill">See top priorities</a>
+        <a href="/journeys" style={{ fontSize: 17, textDecoration: "none" }}>Participant timelines →</a>
       </div>
     </section>
   );
@@ -74,11 +34,12 @@ function tagStyle(kind: Change["kind"]): CSSProperties {
 }
 
 function Changes({ data, showSources }: { data: HomeData; showSources: boolean }) {
+  // Items needing follow-up come first (the server sorts them), so the first few are the ones that matter.
+  const { shown, toggle } = useShowAll(data.changes.items, 6);
   return (
     <section id="changed" style={{ background: PANEL, padding: "72px 24px" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 48 }}>
         <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={s.eyebrow}>Since yesterday</div>
           <h2 style={s.h2}>{data.changes.heading}</h2>
           <p style={{ margin: 0, fontSize: 17, color: MUTED }}>{data.changes.subheading}</p>
           <Source show={showSources} style={{ marginTop: 8 }}>
@@ -87,7 +48,7 @@ function Changes({ data, showSources }: { data: HomeData; showSources: boolean }
         </div>
         {data.changes.items.length > 0 && (
           <div className="stagger change-list">
-            {data.changes.items.map((c, i) => {
+            {shown.map((c, i) => {
               const body = (
                 <>
                   <span style={{ fontSize: 13, color: MUTED, fontVariantNumeric: "tabular-nums" }}>{c.when}</span>
@@ -104,6 +65,7 @@ function Changes({ data, showSources }: { data: HomeData; showSources: boolean }
                 <div key={i} className="row change-row">{body}</div>
               );
             })}
+            {toggle && <div style={{ padding: "10px 16px 6px" }}>{toggle}</div>}
           </div>
         )}
       </div>
@@ -140,11 +102,11 @@ function Person({ p, open, onToggle }: { p: WaitingPerson; open: boolean; onTogg
       {open && (
         <div style={{ padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
           {p.items.map((i) => (
-            <div key={i.code} className="person-item">
+            <a key={i.code} className="person-item" href={i.href}>
               <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{i.code}</span>
               <span>{i.text}</span>
               <span style={{ color: MUTED, whiteSpace: "nowrap" }}>{i.age}</span>
-            </div>
+            </a>
           ))}
         </div>
       )}
@@ -152,36 +114,40 @@ function Person({ p, open, onToggle }: { p: WaitingPerson; open: boolean; onTogg
   );
 }
 
-function Waiting({ data, showSources }: { data: HomeData; showSources: boolean }) {
-  const first = data.waiting.groups.find((g) => g.people.length)?.people[0]?.name ?? null;
-  const [open, setOpen] = useState<string | null>(first);
+function WaitingGroupCard({ g, open, setOpen }: { g: WaitingGroup; open: string | null; setOpen: (name: string | null) => void }) {
+  const { shown, toggle } = useShowAll(g.people, 4);
   return (
-    <section id="waiting" style={{ ...s.section, padding: "96px 24px 40px" }}>
-      <div style={s.eyebrow}>Waiting on</div>
-      <h2 style={s.h2}>Who has the next move.</h2>
-      <p style={s.lede}>Every open item, grouped by the person who has to act. The bar shows how long it has waited against what is typical for this step.</p>
+    <div style={{ background: PANEL, borderRadius: 28, padding: 24, display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 8px 12px", gap: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: "-0.01em" }}>{g.title}</h3>
+        <span style={{ fontSize: 15, color: MUTED }}>{g.summary}</span>
+      </div>
+      {g.people.length === 0 && <div style={{ padding: "4px 8px", color: MUTED }}>Nothing is waiting.</div>}
+      {shown.map((p) => (
+        <Person key={p.name} p={p} open={open === p.name} onToggle={() => setOpen(open === p.name ? null : p.name)} />
+      ))}
+      {toggle && <div style={{ padding: "8px 8px 0" }}>{toggle}</div>}
+    </div>
+  );
+}
+
+function Waiting({ data, showSources }: { data: HomeData; showSources: boolean }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <section id="waiting" style={{ ...s.section, padding: "88px 24px 40px" }}>
+      <h2 style={s.h2}>Waiting on staff</h2>
+      <p style={s.lede}>Open items grouped by the person who needs to act, longest wait first. Each bar compares the oldest item’s wait with the usual time for that step.</p>
       <Source show={showSources} style={{ marginBottom: 8 }}>
         workflow_tasks (waiting_review, pending) + alerts (open, acknowledged) + enrolled awaiting baseline + unanswered messages
         → assigned_staff_id → study_staff → private.staff_users · typical = median of completed steps of the same kind
       </Source>
       <div className="bento two">
-        {data.waiting.groups.map((g: WaitingGroup) => (
-          <div key={g.title} style={{ background: PANEL, borderRadius: 28, padding: 24, display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 8px 12px", gap: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: "-0.01em" }}>{g.title}</h3>
-              <span style={{ fontSize: 15, color: MUTED }}>{g.summary}</span>
-            </div>
-            {g.people.length === 0 && <div style={{ padding: "4px 8px", color: MUTED }}>Nothing waiting.</div>}
-            {g.people.map((p) => (
-              <Person key={p.name} p={p} open={open === p.name} onToggle={() => setOpen(open === p.name ? null : p.name)} />
-            ))}
-          </div>
-        ))}
+        {data.waiting.groups.map((g: WaitingGroup) => <WaitingGroupCard key={g.title} g={g} open={open} setOpen={setOpen} />)}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 32px", marginTop: 12, padding: "18px 8px 0", fontSize: 15 }}>
-        <span><span style={{ fontWeight: 600 }}>Waiting on participants.</span> <span style={s.muted}>{data.waiting.onParticipants}</span></span>
+        <span><span style={{ fontWeight: 600 }}>Waiting on participants:</span> <span style={s.muted}>{data.waiting.onParticipants}</span></span>
         {data.waiting.notStarted && (
-          <span><span style={{ fontWeight: 600 }}>Not started.</span> <span style={s.muted}>{data.waiting.notStarted}</span></span>
+          <span><span style={{ fontWeight: 600 }}>Not started:</span> <span style={s.muted}>{data.waiting.notStarted}</span></span>
         )}
       </div>
     </section>
@@ -244,7 +210,6 @@ function Pipeline({ data, showSources }: { data: HomeData; showSources: boolean 
   const dot = (style: CSSProperties) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 980, ...style }} />;
   return (
     <section id="pipeline" style={s.section}>
-      <div style={s.eyebrow}>Pipeline speed</div>
       <h2 style={s.h2}>{p.heading}</h2>
       <p style={s.lede}>{p.body}</p>
       <div className="bento pipeline">
@@ -276,32 +241,32 @@ function Pipeline({ data, showSources }: { data: HomeData; showSources: boolean 
 }
 
 function BlindSpots({ data, showSources }: { data: HomeData; showSources: boolean }) {
-  const cards = data.blindSpots.cards;
+  const { shown: cards, toggle } = useShowAll(data.blindSpots.cards, 4);
   return (
     <section id="blind-spots" style={s.section}>
-      <div style={s.eyebrow}>Blind spots</div>
-      <h2 style={s.h2}>What no alert rule caught.</h2>
-      <p style={s.lede}>Patterns found across the data that the current rules don’t cover. Worth a look, or a new rule.</p>
+      <h2 style={s.h2}>Patterns outside the alert rules</h2>
+      <p style={s.lede}>Issues found in the data that no current alert rule covers. Each may need follow-up, or a new rule.</p>
       <Source show={showSources} style={{ marginBottom: 8 }}>
         device-reading gaps · inbound messages with no staff reply · repeat threshold alerts within 30 days · silent before a visit
       </Source>
       {cards.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 17, color: MUTED }}>Nothing unusual found.</p>
+        <p style={{ margin: 0, fontSize: 17, color: MUTED }}>No patterns found outside the current rules.</p>
       ) : (
         <div className="bento two stagger">
           {cards.map((b: BlindSpot, i) => (
-            <div key={i} style={{ background: PANEL, borderRadius: 28, padding: 28, display: "flex", flexDirection: "column", gap: 6 }}>
+            <a key={i} className="card" href={b.href ?? "#blind-spots"} style={{ background: PANEL, borderRadius: 28, padding: 28, display: "flex", flexDirection: "column", gap: 6, color: INK, textDecoration: "none" }}>
               <div style={{ fontSize: 13, color: MUTED }}>{b.context}</div>
               <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>{b.title}</div>
               <div style={{ fontSize: 15, lineHeight: 1.47 }}>{b.body}</div>
               <div style={{ fontSize: 15, color: "#0066CC", marginTop: 6 }}>{b.action}</div>
-            </div>
+            </a>
           ))}
         </div>
       )}
+      {toggle && <div style={{ padding: "4px 8px" }}>{toggle}</div>}
       {data.blindSpots.dataQuality && (
         <div style={{ marginTop: 14, padding: "0 8px", fontSize: 14, color: MUTED }}>
-          <span style={{ fontWeight: 600, color: INK }}>Data quality.</span> {data.blindSpots.dataQuality}
+          <span style={{ fontWeight: 600, color: INK }}>Data quality:</span> {data.blindSpots.dataQuality}
         </div>
       )}
     </section>
@@ -319,11 +284,21 @@ const cssToStyle = (css: string): CSSProperties =>
   Object.fromEntries(css.split(";").map((d) => d.split(":").map((x) => x.trim())).filter(([k]) => k)
     .map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]));
 
+const HOME_STUDY_LIMIT = 6;
+// Studies with open alerts or a waiting investigator first, so the short list shows the ones that need attention.
+const attention = (r: StudyRow) => (parseInt(r.alerts, 10) || 0) + (r.waiting === "No one" ? 0 : 1);
+
 function Studies({ data, showSources }: { data: HomeData; showSources: boolean }) {
+  const rows = [...data.studies.rows].sort((a, b) => attention(b) - attention(a));
+  const quiet = rows.filter((r) => attention(r) === 0).length;
   return (
     <section id="studies" style={{ ...s.section, padding: "72px 24px 120px" }}>
-      <div style={s.eyebrow}>Study health</div>
-      <h2 style={{ ...s.h2, marginBottom: 16 }}>{data.studies.heading}</h2>
+      <h2 style={s.h2}>Study status</h2>
+      <p style={{ ...s.lede, marginBottom: 16 }}>
+        {data.studies.heading}{" "}
+        {quiet === rows.length ? "None have open alerts or pending decisions."
+          : quiet ? `${quiet} ${quiet === 1 ? "has" : "have"} no open alerts or pending decisions.` : ""}
+      </p>
       <Source show={showSources} style={{ marginBottom: 8 }}>public.studies ⋈ participants ⋈ alerts ⋈ workflow_tasks · trial manager from study_staff (role = trial_manager)</Source>
       <div style={{ overflowX: "auto", margin: "0 -8px" }}>
         <div role="table" aria-label="Study health" style={{ minWidth: 1000, padding: "0 8px" }}>
@@ -331,8 +306,8 @@ function Studies({ data, showSources }: { data: HomeData; showSources: boolean }
             <span role="columnheader">Study</span><span role="columnheader">Participants</span><span role="columnheader">Consent</span>
             <span role="columnheader">Alerts</span><span role="columnheader">Waiting on an investigator</span>
           </div>
-          {data.studies.rows.map((r) => (
-            <div role="row" key={r.meta} className="row study-grid" style={{ alignItems: "center", minHeight: 80, padding: "0 16px", borderRadius: 18, fontVariantNumeric: "tabular-nums" }}>
+          {rows.slice(0, HOME_STUDY_LIMIT).map((r) => (
+            <a role="row" key={r.meta} href={r.href} className="row study-grid" style={{ alignItems: "center", minHeight: 80, padding: "0 16px", borderRadius: 18, fontVariantNumeric: "tabular-nums", textDecoration: "none" }}>
               <span role="cell">
                 <span style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{r.short}</span>
                 <span style={{ fontSize: 13, color: MUTED }}>{r.meta}</span>
@@ -352,7 +327,7 @@ function Studies({ data, showSources }: { data: HomeData; showSources: boolean }
                 <span style={{ fontSize: 13, color: MUTED }}>{r.alertNote}</span>
               </span>
               <span role="cell" style={{ fontSize: 15 }}>{r.waiting}</span>
-            </div>
+            </a>
           ))}
         </div>
       </div>
@@ -363,26 +338,54 @@ function Studies({ data, showSources }: { data: HomeData; showSources: boolean }
           </span>
         ))}
       </div>
+      <a href="/studies" style={{ alignSelf: "flex-start", marginTop: 16, fontSize: 17, textDecoration: "none" }}>
+        {rows.length > HOME_STUDY_LIMIT ? `View all ${rows.length} studies →` : "View studies →"}
+      </a>
     </section>
   );
 }
 
-function Footer({ data, showSources, onToggleSources }: { data: HomeData; showSources: boolean; onToggleSources: () => void }) {
-  const time = new Date(data.generatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+// Classic-mode routes. Codes are the database's own (STUDY-001, SITE-001-A, STUDY-001-P003).
+function route(path: string) {
+  const m = (re: RegExp) => path.match(re)?.[1];
+  const code = (re: RegExp) => (m(re) ? decodeURIComponent(m(re)!) : null);
+  if (path === "/" || path === "") return <Home />;
+  if (path === "/studies") return <StudiesPage />;
+  if (code(/^\/studies\/([^/]+)$/)) return <Study key={path} code={code(/^\/studies\/([^/]+)$/)!} />;
+  if (code(/^\/sites\/([^/]+)$/)) return <Site key={path} code={code(/^\/sites\/([^/]+)$/)!} />;
+  if (code(/^\/participants\/([^/]+)$/)) return <Participant key={path} code={code(/^\/participants\/([^/]+)$/)!} />;
+  if (path === "/alerts") return <Alerts />;
+  if (path === "/journeys") return <Journeys />;
+  if (path === "/calendar") return <Calendar />;
+  if (path === "/reported") return <Reported code={null} />;
+  if (code(/^\/reported\/([^/]+)$/)) return <Reported code={code(/^\/reported\/([^/]+)$/)} />;
   return (
-    <footer style={{ borderTop: "1px solid rgba(0,0,0,0.08)", padding: "20px 24px 40px" }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: "8px 24px", justifyContent: "space-between", fontSize: 13, color: MUTED }}>
-        <span>Live from the clinical_trials database · synthetic data only · updated {time}</span>
-        <button type="button" onClick={onToggleSources} className="link-button">{showSources ? "Hide data sources" : "Show data sources"}</button>
-      </div>
-    </footer>
+    <div className="status" role="status">
+      <p style={{ fontSize: 28, fontWeight: 600, color: INK }}>Nothing here.</p>
+      <a href="/" className="pill">Back to the portfolio</a>
+    </div>
   );
 }
 
 export default function App() {
+  const path = usePath().replace(/\/+$/, "") || "/";
+  useEffect(() => {
+    const titles: Array<[RegExp, string]> = [[/^\/studies$/, "Studies"], [/^\/studies\//, "Study"], [/^\/sites\//, "Site"],
+      [/^\/participants\//, "Participant"], [/^\/alerts/, "Alerts"], [/^\/calendar/, "Calendar"], [/^\/journeys/, "Journeys"], [/^\/reported/, "Reported data"]];
+    document.title = `Trial Ops · ${titles.find(([re]) => re.test(path))?.[1] ?? "Portfolio home"}`;
+  }, [path]);
+  return (
+    <>
+      <Header path={path} />
+      {route(path)}
+    </>
+  );
+}
+
+function Home() {
   const [data, setData] = useState<HomeData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showSources, setShowSources] = useState(() => new URLSearchParams(location.search).has("sources"));
+  const [showSources, toggleSources] = useSources();
 
   const load = useCallback(async () => {
     try {
@@ -407,18 +410,8 @@ export default function App() {
     };
   }, [load]);
 
-  const toggleSources = () => {
-    const next = !showSources;
-    setShowSources(next);
-    const url = new URL(location.href);
-    if (next) url.searchParams.set("sources", "");
-    else url.searchParams.delete("sources");
-    history.replaceState(null, "", url);
-  };
-
   return (
     <>
-      <Header />
       {!data ? (
         <div className="status" role="status">
           {error ? (
@@ -434,12 +427,13 @@ export default function App() {
         <main>
           {error && <div className="stale" role="status">Showing data from {new Date(data.generatedAt).toLocaleTimeString()}. {error}</div>}
           <Hero data={data} />
+          {data.priorities && <TopPriorities data={data.priorities} scope="across all studies" />}
           <Changes data={data} showSources={showSources} />
           <Waiting data={data} showSources={showSources} />
           <Pipeline data={data} showSources={showSources} />
           <BlindSpots data={data} showSources={showSources} />
           <Studies data={data} showSources={showSources} />
-          <Footer data={data} showSources={showSources} onToggleSources={toggleSources} />
+          <Footer generatedAt={data.generatedAt} showSources={showSources} onToggleSources={toggleSources} />
         </main>
       )}
     </>

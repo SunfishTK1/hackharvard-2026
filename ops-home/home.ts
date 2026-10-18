@@ -15,7 +15,7 @@ export interface Queryable {
   query(text: string, params?: unknown[]): Promise<{ rows: any[] }>;
 }
 
-const DAY = 86_400_000;
+export const DAY = 86_400_000;
 
 // $1 is always the display time zone.
 const SQL = {
@@ -162,25 +162,25 @@ const SQL = {
 // ---------------------------------------------------------------------------
 
 const NUMBER_WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"];
-const ORDINALS = ["", "First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth"];
+export const ORDINALS = ["", "First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth"];
 
-const word = (n: number) => NUMBER_WORDS[n] ?? String(n);
-const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
-const humanize = (s: string) => s.replace(/_/g, " ");
-const median = (xs: number[]) => {
+export const word = (n: number) => NUMBER_WORDS[n] ?? String(n);
+export const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+export const humanize = (s: string) => s.replace(/_/g, " ");
+export const median = (xs: number[]) => {
   if (!xs.length) return 0;
   const s = [...xs].sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
 // First sentence of a free-text alert reason, e.g. "Reported symptom: Dizziness (severe)."
-const firstSentence = (s: string, max = 100) => {
+export const firstSentence = (s: string, max = 100) => {
   const t = (s.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? s).trim();
   return t.length > max ? t.slice(0, max - 1).trimEnd() + "…" : t;
 };
-const quote = (s: string, max = 140) => `“${s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s}”`;
+export const quote = (s: string, max = 140) => `“${s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s}”`;
 
-function makeClock(tz: string, now: Date) {
+export function makeClock(tz: string, now: Date) {
   const dateFmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
   const timeFmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" });
   const hourFmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" });
@@ -248,6 +248,7 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
   const where = (p: any, ...extra: (string | null | undefined)[]) =>
     [product(p), p.code, institution(p), ...extra].filter(Boolean).join(" · ");
   const shortCode = (p: any) => `${product(p)} ${p.code.split("-").pop()}`;
+  const pHref = (p: any) => `/participants/${encodeURIComponent(p.code)}`;
   const low = (op: string | null) => op === "<" || op === "<=";
 
   const msgsFor = (pid: string) => messages.filter((m) => m.participant_id === pid);
@@ -291,22 +292,22 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
       ? readingPhrases.slice(0, -1).join(", ") + ", and " + readingPhrases.at(-1)
       : readingPhrases.join(" and ");
     const day = readingDays.size === 1 ? [...readingDays][0] : "recently";
-    heroBody += `${list[0].toUpperCase()}${list.slice(1)} came in ${day}. `;
+    heroBody += `${list[0].toUpperCase()}${list.slice(1)} ${readingPhrases.length === 1 ? "was" : "were"} reported ${day}. `;
   }
   if (highOther.length) {
     const what = highOther.map((a) => quote(firstSentence(a.reason, 70).replace(/[.!?]$/, ""))).join(", ");
     heroBody += highReadings.length
-      ? `${word(highOther.length)} other high-severity alert${highOther.length === 1 ? "" : "s"}: ${what}. `
-      : `${word(highOther.length)} high-severity alert${highOther.length === 1 ? "" : "s"} open: ${what}. `;
+      ? `${highOther.length === 1 ? "Another high-severity alert is" : `${word(highOther.length)} other high-severity alerts are`} also open: ${what}. `
+      : `${word(highOther.length)} high-severity alert${highOther.length === 1 ? " is" : "s are"} open: ${what}. `;
   }
   if (decisions.length) {
     const enrollments = decisions.filter((t) => t.action_type === "confirm_enrollment").length;
     const reviews = decisions.filter((t) => t.action_type === "review_safety").length;
-    const what = [enrollments ? (enrollments === 1 ? "an enrollment" : "enrollments") : "",
+    const what = [enrollments ? (enrollments === 1 ? "an enrollment confirmation" : "enrollment confirmations") : "",
       reviews ? (reviews === 1 ? "a safety review" : "safety reviews") : ""].filter(Boolean).join(" or ");
-    heroBody += `${word(investigators.size)} investigator${investigators.size === 1 ? " has" : "s have"} ${what || "decisions"} waiting on them. `;
+    heroBody += `${word(investigators.size)} investigator${investigators.size === 1 ? " has" : "s have"} ${what || "decisions"} waiting for a decision. `;
   }
-  heroBody += `Everything else across ${plural(studies.length, "study", "studies")} and ${plural(participants.length, "participant")} is moving.`;
+  heroBody += `Other work across ${plural(studies.length, "study", "studies")} and ${plural(participants.length, "participant")} is on schedule.`;
 
   // -------------------------------------------------------------------------
   // Since yesterday
@@ -329,7 +330,7 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     changes.push({
       at: a.created_at, when: clock.when(a.created_at), text, where: where(p, a.staff_name),
       tag: !a.staff_name ? "Unassigned" : a.staff_role === "principal_investigator" ? "Needs investigator" : "Needs coordinator",
-      kind: "need", href: "#waiting",
+      kind: "need", href: "/alerts",
     });
   }
 
@@ -359,7 +360,7 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
       text = "Withdrew from the study.";
       tag = "Closed";
     } else continue;
-    changes.push({ at: e.occurred_at, when: clock.when(e.occurred_at), text, where: where(p), tag, kind: "info" });
+    changes.push({ at: e.occurred_at, when: clock.when(e.occurred_at), text, where: where(p), tag, kind: "info", href: pHref(p) });
   }
 
   const conversations = new Map<string, any[]>();
@@ -391,7 +392,7 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     }
     changes.push({
       at: last.at, when: clock.when(last.at), text, where: where(p, p.coord_name), tag,
-      kind: unanswered ? "need" : "info",
+      kind: unanswered ? "need" : "info", href: pHref(p),
     });
   }
 
@@ -505,7 +506,10 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
   const toPerson = (d: PersonDraft): WaitingPerson => {
     const items = [...d.items.entries()]
       .sort(([, a], [, b]) => (a.since?.getTime() ?? Infinity) - (b.since?.getTime() ?? Infinity))
-      .map(([code, it]): WaitingItem => ({ code, text: [mergeTexts(it.texts), ...new Set(it.later)].filter(Boolean).join(" "), age: it.since ? clock.age(it.since) : it.note ?? "" }));
+      .map(([code, it]): WaitingItem => ({
+        code, text: [mergeTexts(it.texts), ...new Set(it.later)].filter(Boolean).join(" "),
+        age: it.since ? clock.age(it.since) : it.note ?? "", href: `/participants/${encodeURIComponent(code)}`,
+      }));
     const dated = [...d.items.values()].filter((it) => it.since).sort((a, b) => a.since!.getTime() - b.since!.getTime());
     const oldest = dated[0];
     return {
@@ -555,10 +559,10 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
   const recentLags = recent.map(lag);
   const recentMedian = median(recentLags);
   const stillWaiting = points.filter((p) => p.waiting).length;
-  const pipelineHeading = recent.length < 3 ? "Confirmations so far."
-    : recentMedian >= typicalConfirm + 1 ? "Confirmations are slowing down."
-    : recentMedian <= typicalConfirm - 1 ? "Confirmations are speeding up."
-    : "Confirmations are on pace.";
+  const pipelineHeading = recent.length < 3 ? "Enrollment confirmations so far"
+    : recentMedian >= typicalConfirm + 1 ? "Enrollment confirmations are taking longer than usual"
+    : recentMedian <= typicalConfirm - 1 ? "Enrollment confirmations are faster than usual"
+    : "Enrollment confirmations are on pace";
   const lastEarlier = earlier.at(-1);
   const throughMonth = lastEarlier && confirmed.length > 5
     ? ` through ${new Intl.DateTimeFormat("en-US", { timeZone: tz, month: "long" }).format(lastEarlier.enrolled_at)}`
@@ -590,12 +594,13 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     if (!p || g.missing_rule_source === "device") continue;
     blind.push({
       context: where(p),
-      title: `No ${g.device_labels?.length === 1 ? g.device_labels[0] : "device"} readings for ${plural(g.n, "day")}.`,
+      title: `No ${g.device_labels?.length === 1 ? g.device_labels[0] : "device"} readings for ${plural(g.n, "day")}`,
       body: `${clock.shortDate(g.first_day)} to ${clock.shortDate(g.last_day)}. ` +
         (g.missing_rule_source
           ? `The missing-data rule only watches ${g.missing_rule_source === "patient_message" ? "text replies" : humanize(g.missing_rule_source)}, so device gaps never raise an alert.`
           : "No missing-data rule is enabled for this study."),
-      action: "Propose a device-gap rule →",
+      action: "Review participant →",
+      href: pHref(p),
     });
   }
 
@@ -606,9 +611,10 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     if (!open) continue;
     blind.push({
       context: where(p),
-      title: `A question with no reply for ${plural(clock.daysBetween(open.at), "day")}.`,
+      title: `Participant question unanswered for ${plural(clock.daysBetween(open.at), "day")}`,
       body: `${quote(open.body)}${p.status === "consent_pending" ? " Consent is still unsigned." : ""}`,
       action: "Open conversation →",
+      href: pHref(p),
     });
   }
 
@@ -629,9 +635,10 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     const before = series.slice(0, -1).map((x) => `${describe(x)} on ${clock.shortDate(x.created_at)}, ${x.status}.`).join(" ");
     blind.push({
       context: where(p),
-      title: `${ORDINALS[series.length] ?? series.length + "th"} ${low(a.op) ? "low" : "high"} ${a.label.toLowerCase()} in ${plural(span, "day")}.`,
-      body: `${before[0].toUpperCase()}${before.slice(1)} ${describe(a)} ${clock.onDay(a.created_at)}. Each alert is treated on its own; the repeat isn’t.`,
+      title: `${ORDINALS[series.length] ?? series.length + "th"} ${low(a.op) ? "low" : "high"} ${a.label.toLowerCase()} reading in ${plural(span, "day")}`,
+      body: `${before[0].toUpperCase()}${before.slice(1)} ${describe(a)} ${clock.onDay(a.created_at)}. Each alert is handled separately, so no rule flags the repeat.`,
       action: series.length === 2 ? "See both alerts →" : `See all ${series.length} alerts →`,
+      href: "/alerts",
     });
   }
 
@@ -645,12 +652,13 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     const sentences: string[] = [];
     if (reminder) sentences.push(`The visit reminder went out ${clock.relDay(reminder.at)}.`);
     if (checkIn) sentences.push(reminder ? "So did a check-in from the study team." : `A check-in from the study team went out ${clock.relDay(checkIn.at)}.`);
-    sentences.push(reminder && checkIn ? "Neither got a reply." : reminder || checkIn ? "It got no reply." : "Nothing has gone out to them since.");
+    sentences.push(reminder && checkIn ? "Neither has been answered." : reminder || checkIn ? "It hasn’t been answered." : "Nothing has been sent to them since.");
     blind.push({
       context: where(p),
-      title: `Week ${Math.round(v.study_day / 7)} visit ${clock.relDay(v.due_on)}. Silent for ${plural(quiet, "day")}.`,
+      title: `Week ${Math.round(v.study_day / 7)} visit ${clock.relDay(v.due_on)} with no replies for ${plural(quiet, "day")}`,
       body: sentences.join(" "),
       action: "Open participant →",
+      href: pHref(p),
     });
   }
 
@@ -709,30 +717,33 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
       alerts: `${open.length} open`,
       alertNote,
       waiting,
+      href: `/studies/${encodeURIComponent(s.study_code)}`,
     };
   });
   const activeStudies = studies.filter((s) => s.status === "active").length;
   const studiesHeading = activeStudies === studies.length
-    ? `${studies.length === 2 ? "Both" : "All " + word(studies.length).toLowerCase()} ${studies.length === 1 ? "is" : "are"} active.`
-    : `${word(activeStudies)} of ${studies.length} ${activeStudies === 1 ? "is" : "are"} active.`;
+    ? `${studies.length === 1 ? "The study is" : studies.length === 2 ? "Both studies are" : `All ${studies.length} studies are`} active.`
+    : `${activeStudies} of ${plural(studies.length, "study", "studies")} ${activeStudies === 1 ? "is" : "are"} active.`;
 
   return {
     generatedAt: now.toISOString(),
     dateLabel: `Clinical operations · ${clock.longDate}`,
     hero: {
-      headline: [
-        highOther.length
-          ? `${plural(highReadings.length + highOther.length, "high-severity alert")}.`
-          : highReadings.length ? `${plural(highReadings.length, "high reading")}.` : "No high readings.",
-        decisions.length ? `${plural(decisions.length, "decision")} waiting.` : "No decisions waiting.",
-      ],
+      headline: (() => {
+        const high = highReadings.length + highOther.length;
+        const first = high ? `${plural(high, "high-severity alert")} ${high === 1 ? "is" : "are"} open` : "No high-severity alerts are open";
+        const second = decisions.length
+          ? `and ${plural(decisions.length, "decision")} ${decisions.length === 1 ? "is" : "are"} waiting.`
+          : "and no decisions are waiting.";
+        return [`${first},`, second] as [string, string];
+      })(),
       body: heroBody,
     },
     changes: {
-      heading: changes.length ? `${plural(changes.length, "thing")} changed.` : "Nothing changed.",
+      heading: "Changes since yesterday",
       subheading: changes.length
-        ? `${needCount} need${needCount === 1 ? "s" : ""} someone. ${changes.length - needCount} ${changes.length - needCount === 1 ? "is" : "are"} progress.`
-        : "Quiet since yesterday.",
+        ? `${plural(changes.length, "update")} since the start of yesterday. ${needCount ? `${needCount} ${needCount === 1 ? "needs" : "need"} someone to follow up.` : "None need follow-up."}`
+        : "No updates since the start of yesterday.",
       items: changes.map(({ at: _at, ...c }) => c),
     },
     waiting: { groups, onParticipants, notStarted },
