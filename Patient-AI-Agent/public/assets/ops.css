@@ -167,6 +167,7 @@ a.list-row { color: inherit; text-decoration: none; }
 .run-head .grow { flex: 1; }
 .run-head .elapsed { font-size: 21px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .run-head .took { font-size: 15px; color: var(--ink-2); white-space: nowrap; }
+.pulse.small { width: 8px; height: 8px; }
 .pulse { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--accent); animation: calm 2.4s ease-in-out infinite; }
 @keyframes calm { 50% { opacity: 0.35; transform: scale(0.8); } }
 .stepper { list-style: none; margin: 22px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -179,6 +180,7 @@ a.list-row { color: inherit; text-decoration: none; }
 .step.active .dot { box-shadow: inset 0 0 0 2px var(--accent); }
 .step.active .dot::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: calm 2.4s ease-in-out infinite; }
 .step.failed .dot { background: var(--red); box-shadow: none; color: #fff; }
+.step.stopped .dot { background: var(--ink-10); box-shadow: none; color: var(--ink-2); }
 .step .label { font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--ink-2); }
 .step.done .label, .step.active .label { color: var(--ink); }
 .machine { margin-top: 20px; display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
@@ -187,6 +189,7 @@ a.list-row { color: inherit; text-decoration: none; }
 .log-phase { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 14px 0 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .log-phase small { font-weight: 400; font-variant-numeric: tabular-nums; }
 .list-row.log-step { min-height: 52px; padding: 8px 0; }
+.log-step .text .label { font-size: 15px; line-height: 1.35; }
 .log-step .tag { background: var(--ink-05); font-variant-numeric: tabular-nums; }
 .ok-dot, .fail-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ink-20); }
 .fail-dot { background: var(--red); }

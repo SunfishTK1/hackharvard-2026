@@ -74,7 +74,7 @@ export class Analyst {
   /** Stops a running analysis: the step in progress is killed on the computer. False if it isn't running. */
   async cancel(managerId: string, id: string): Promise<boolean> {
     const r = this.running.get(id);
-    if (!r || r.managerId !== managerId) return false;
+    if (!r || r.managerId !== managerId || r.stopped) return false;
     r.stopped = true;
     await ops("update ops.analyses set status = 'cancelled', phase = 'cancelled', error = 'Stopped by you.', finished_at = now() where id = $1 and status = 'running'", [id]);
     await this.log(id, { kind: "phase", text: "Stopped." });
@@ -126,7 +126,14 @@ export class Analyst {
         await ops("update ops.analyses set steps = $2 where id = $1", [id, step]);
         await this.log(id, { kind: "step", text: purpose || `Step ${step}.`, running: true });
         const started = Date.now();
-        const r = await work();
+        let r: computer.RunResult;
+        try {
+          r = await work();
+        } catch (error) {
+          // The computer didn't answer (a timeout, a lost connection): the step still ends in the log.
+          await this.endStep(id, started, -1, describeError(error));
+          throw error;
+        }
         await this.endStep(id, started, r.exitCode, r.output);
         check();
         return r;

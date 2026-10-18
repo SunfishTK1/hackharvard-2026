@@ -800,7 +800,7 @@ export async function analysis(q: Query, managerId: string, id: string, fileUrl:
     ...(e.seconds !== undefined ? { seconds: Number(e.seconds) } : {}), ...(e.detail ? { detail: e.detail } : {}),
   }));
   // How far it got before failing or being stopped: the furthest phase its log reached.
-  const reached = log.some((e) => e.kind === "step") ? 2 : log.some((e) => /^Loaded|Loading/.test(e.text)) ? 1 : 0;
+  const reached = log.some((e) => e.kind === "step" || /Analyzing\.$/.test(e.text)) ? 2 : log.some((e) => /^Loading/.test(e.text)) ? 1 : 0;
   return {
     id: a.id, title: a.title, request: a.request, status: a.status, phase: a.phase, when: when(a.created_at), finished: a.finished_at ? when(a.finished_at) : null,
     steps: a.steps, elapsedSeconds: seconds(a.created_at, a.finished_at),

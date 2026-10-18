@@ -632,26 +632,31 @@ async function analysisList() {
   ];
 }
 
-/** The four phases: done (check), active (a calm pulse), to do, or failed. */
-function stepper(phases) {
-  return h("ol", { class: "stepper", "aria-label": "Progress" }, phases.map((p) => h("li", { class: `step ${p.state}`, "aria-current": p.state === "active" ? "step" : null },
-    p.state === "done" ? h("span", { class: "dot", "aria-hidden": "true", html: icons.check }) : h("span", { class: "dot", "aria-hidden": "true" }, p.state === "failed" ? "!" : null),
-    h("span", { class: "label" }, p.label),
-    h("span", { class: "sr-only" }, `, ${STEP_STATE[p.state] ?? p.state}`))));
+/** The four phases: done (check), active (a calm pulse), to do, failed (!), or where it was stopped (–). */
+function stepper(phases, stopped) {
+  return h("ol", { class: "stepper", "aria-label": "Progress" }, phases.map((p) => {
+    const state = stopped && p.state !== "done" && p.state !== "todo" ? "stopped" : p.state;
+    return h("li", { class: `step ${state}`, "aria-current": state === "active" ? "step" : null },
+      state === "done" ? h("span", { class: "dot", "aria-hidden": "true", html: icons.check }) : h("span", { class: "dot", "aria-hidden": "true" }, state === "failed" ? "!" : state === "stopped" ? "–" : null),
+      h("span", { class: "label" }, p.label),
+      h("span", { class: "sr-only" }, `, ${state === "stopped" ? "stopped here" : STEP_STATE[state] ?? state}`));
+  }));
 }
 
 /** The log: phase rows as labels, steps with their purpose, time and exit code; tap a step for its output. */
-function logList(log, open, rerender) {
+function logList(log, open, rerender, live = false) {
   const items = [];
+  const last = log.findLastIndex((e) => e.kind !== "phase");
   log.forEach((e, i) => {
     if (e.kind === "phase") {
       items.push(h("div", { class: "log-phase" }, h("span", {}, e.text), h("small", {}, e.when)));
       return;
     }
     const failed = e.exitCode !== undefined && e.exitCode !== null && e.exitCode !== 0;
+    const now = live && i === last && (e.exitCode === undefined || e.exitCode === null);
     const expanded = open.has(i);
     const body = [
-      h("span", { class: failed ? "fail-dot" : "ok-dot", role: failed ? "img" : null, "aria-label": failed ? `Failed, exit code ${e.exitCode}` : null, "aria-hidden": failed ? null : "true" }),
+      h("span", { class: failed ? "fail-dot" : now ? "pulse small" : "ok-dot", role: failed || now ? "img" : null, "aria-label": failed ? `Failed, exit code ${e.exitCode}` : now ? "Running now" : null, "aria-hidden": failed || now ? null : "true" }),
       h("span", { class: "text" }, h("span", { class: "label" }, e.text), h("small", {}, [e.when, failed ? `Exit code ${e.exitCode}` : null].filter(Boolean).join(" · "))),
       e.seconds !== undefined && e.seconds !== null ? tag(duration(e.seconds)) : null,
       e.detail ? h("span", { class: `chevron${expanded ? " open" : ""}`, html: icons.chevron }) : null,
@@ -733,7 +738,7 @@ async function analysisScreen(id, alive) {
           running
             ? h("b", { class: "elapsed", "aria-label": `${duration(elapsed())} so far` }, stopwatch(elapsed()))
             : a.elapsedSeconds ? h("span", { class: "took" }, `Took ${duration(a.elapsedSeconds)}`) : null),
-        a.phases?.length ? stepper(a.phases) : null,
+        a.phases?.length ? stepper(a.phases, a.status === "cancelled") : null,
         machine ? h("p", { class: "machine" }, h("span", { html: icons.gauge, style: "display:contents" }), `Cloud computer · ${machine}`) : null),
       ui.message ? h("p", { class: "note", role: "status" }, ui.message) : null,
       a.status === "failed" ? h("div", { class: "notice space" }, h("span", { html: icons.info, style: "display:contents" }),
@@ -741,7 +746,7 @@ async function analysisScreen(id, alive) {
       a.status === "cancelled" ? h("div", { class: "notice space" }, h("span", { html: icons.info, style: "display:contents" }),
         h("span", { class: "text" }, h("b", {}, "Stopped before it finished."), h("span", {}, "Nothing more runs, and nothing was saved."))) : null,
       ended ? h("p", { class: "note" }, "Ask Trial Ops to rerun it.") : null,
-      running ? [sectionHead("Live log"), logList(log, ui.open, () => paint())] : null,
+      running ? [sectionHead("Live log"), logList(log, ui.open, () => paint(), true)] : null,
       paragraphs.length ? [sectionHead("Summary"), h("div", { class: "card prose" }, paragraphs.map((t) => h("p", {}, t)))] : null,
       a.findings?.length ? [sectionHead("Findings"), listCard(a.findings.map((t) => row({ lead: h("span", { class: "sev" }), title: t, bold: false, top: true })))] : null,
       images.map((f) => h("a", { class: "figure", href: f.url, target: "_blank", rel: "noopener", "aria-label": `Open ${f.name}` },
