@@ -50,7 +50,7 @@ const stack = [];
 let seq = 0;
 /** The loading skeleton, shown only when a screen is slow; any screen shown cancels it. */
 let skeleton;
-const TITLES = { home: "Home", approvals: "Decisions", alerts: "Alerts", alert: "Alert", study: "Study", participant: "Participant", pipeline: "Pipeline", quality: "Data quality", approval: "Decision", analysis: "Analyses" };
+const TITLES = { home: "Home", approvals: "Decisions", alerts: "Alerts", alert: "Alert", study: "Study", participant: "Participant", pipeline: "Pipeline", quality: "Data quality", approval: "Decision", analysis: "Analyses", prefs: "Notifications" };
 const NAV = [
   { view: "home", icon: "home", label: "Home" },
   { view: "approvals", icon: "decisions", label: "Decisions" },
@@ -58,23 +58,36 @@ const NAV = [
   { view: "pipeline", icon: "funnel", label: "Pipeline" },
   { view: "quality", icon: "gauge", label: "Data quality" },
   { view: "analysis", icon: "chart", label: "Analyses" },
+  { view: "prefs", icon: "message", label: "Notifications" },
 ];
+
+/** Screens that keep themselves current: re-read quietly every minute while the tab is visible. */
+const LIVE = new Set(["home", "approvals", "alerts", "alert", "study", "participant", "pipeline", "quality"]);
+const REFRESH_MS = 60_000;
+let loadedAt = 0;
+let refreshing = false;
+/** "Show all" lists the manager opened on this screen, by position, so a refresh keeps them open. */
+const opened = new Set();
+let capIndex = 0;
 
 const clean = (params) => Object.fromEntries(Object.entries(params ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => [k, String(v)]));
 const sync = () => history.replaceState(null, "", `${location.pathname}${qs({ view: current.view, ...current.params })}`);
 function go(view, params = {}) {
   if (current) stack.push(current);
+  opened.clear();
   current = { view, params: clean(params) };
   sync();
   render();
 }
 /** Same screen, other filters: no new back step. */
 function swap(params) {
+  opened.clear();
   current = { view: current.view, params: clean(params) };
   sync();
   render();
 }
 function back() {
+  opened.clear();
   current = stack.pop() ?? { view: "home", params: {} };
   sync();
   render();
@@ -108,8 +121,10 @@ async function render() {
     if (alive()) app.replaceChildren(...["40%", "80%", "100%", "70%"].map((w, i) => h("div", { class: "skeleton", style: `width: ${w}${i === 1 ? "; height: 44px" : ""}` })));
   }, 160);
   try {
+    capIndex = 0;
     const nodes = await SCREENS[current.view](current.params, alive);
     if (alive() && nodes) show(...nodes);
+    if (alive()) loadedAt = Date.now();
   } catch (e) {
     if (!alive()) return;
     show(result("warn", null, e.status === 410 ? "This link has expired." : e.status === 404 ? "Not found." : "We couldn't load this.", e.status === 410 ? "Ask Trial Ops in Messages for a fresh one." : e.message), bar());
@@ -117,6 +132,43 @@ async function render() {
     if (alive()) clearTimeout(skeleton);
   }
 }
+
+/** Re-reads the current live screen in place: same scroll, same open lists, no entrance animation. */
+async function refresh() {
+  if (!current || !LIVE.has(current.view) || refreshing || document.visibilityState !== "visible") return;
+  // Not while the manager is in the middle of something: the menu is open or they're typing.
+  if (document.querySelector(".menu") || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? "")) return;
+  const mine = seq;
+  const alive = () => mine === seq;
+  refreshing = true;
+  try {
+    capIndex = 0;
+    const nodes = await SCREENS[current.view](current.params, alive);
+    if (alive() && nodes) {
+      const opts = nodes[0] && !nodes[0].nodeType && !Array.isArray(nodes[0]) && typeof nodes[0] === "object" ? nodes.shift() : {};
+      show({ ...opts, quiet: true }, ...nodes);
+      loadedAt = Date.now();
+    }
+  } catch {
+    // Keep what's shown; the next tick tries again.
+  } finally {
+    refreshing = false;
+  }
+}
+/** "Updated just now" → "Updated 2 min ago". */
+function stampUpdated() {
+  for (const el of app.querySelectorAll(".updated")) {
+    const s = (Date.now() - Number(el.dataset.at)) / 1000;
+    el.textContent = s < 45 ? "Updated just now" : s < 3600 ? `Updated ${Math.max(1, Math.round(s / 60))} min ago` : `Updated ${Math.round(s / 3600)} h ago`;
+  }
+}
+setInterval(() => {
+  if (Date.now() - loadedAt >= REFRESH_MS) refresh();
+  stampUpdated();
+}, 5_000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && Date.now() - loadedAt > 10_000) refresh();
+});
 
 /** The glass dock: back (when there is somewhere to go back to), the screen's actions, and the ••• menu. */
 function bar(...items) {
@@ -135,6 +187,7 @@ function bar(...items) {
 
 const header = (eyebrow, title, lede) => h("div", { class: "header" },
   eyebrow ? h("span", { class: "eyebrow" }, eyebrow) : null,
+  LIVE.has(current?.view) ? h("span", { class: "updated", "data-at": String(Date.now()) }, "Updated just now") : null,
   title ? h("h1", { class: `title${title.length > 26 ? " compact" : ""}` }, title) : null,
   lede ? h("p", { class: "lede" }, lede) : null);
 const result = (tone, eyebrow, title, lede) => h("div", { class: "result" },
@@ -174,9 +227,10 @@ function barRow({ label, value, frac, sub, soft, onclick }) {
 }
 /** Shows the first `limit` rows, then a "Show all" row that reveals the rest. */
 function capped(rows, limit = 6) {
-  if (rows.length <= limit + 1) return rows;
+  const key = capIndex++;
+  if (rows.length <= limit + 1 || opened.has(key)) return rows;
   const rest = rows.slice(limit);
-  const more = h("button", { type: "button", class: "btn link", style: "padding: 0; margin: 4px 0 10px", onclick: () => more.replaceWith(...rest) }, `Show all ${rows.length}`);
+  const more = h("button", { type: "button", class: "btn link", style: "padding: 0; margin: 4px 0 10px", onclick: () => { opened.add(key); more.replaceWith(...rest); } }, `Show all ${rows.length}`);
   return [...rows.slice(0, limit), more];
 }
 const svg = (attrs, inner) => {
@@ -364,12 +418,16 @@ const SCREENS = {
     const high = alerts.filter((a) => a.severity === "high" || a.severity === "critical").length;
     const groups = SEVERITIES.map((level) => [level, alerts.filter((a) => a.severity === level)]).filter(([, list]) => list.length);
     const seg = (value, label) => h("button", { type: "button", "aria-pressed": String(status === value), onclick: () => swap({ ...params, status: value === "unresolved" ? undefined : value }) }, label);
+    const level = (value, label) => h("button", { type: "button", "aria-pressed": String((params.severity ?? "") === value), onclick: () => swap({ ...params, severity: value || undefined }) }, label);
     return [
       header(params.study ? `Alerts · ${studyName(params.study)}` : "Alerts",
         status === "resolved" ? `${alerts.length} resolved.` : status === "all" ? `${plural(alerts.length, "alert")}.` : alerts.length ? `${alerts.length} open.` : "None open.",
-        status === "resolved" ? "Most recent first." : high ? `${high} high or critical. Assigned to the site's coordinator, or its investigator for safety reviews.` : "Sorted by severity, then most recent."),
+        [params.severity ? `Showing ${params.severity} only.` : null,
+          status === "resolved" ? "Most recent first." : high && !params.severity ? `${high} high or critical. Assigned to the site's coordinator, or its investigator for safety reviews.` : "Most urgent first."].filter(Boolean).join(" ")),
       h("div", { class: "filters" },
-        h("div", { class: "segmented", role: "group", "aria-label": "Status" }, seg("unresolved", "Open"), seg("all", "All"), seg("resolved", "Resolved")),
+        h("div", { class: "filter-row" },
+          h("div", { class: "segmented", role: "group", "aria-label": "Status" }, seg("unresolved", "Open"), seg("all", "All"), seg("resolved", "Resolved")),
+          h("div", { class: "segmented small", role: "group", "aria-label": "Severity" }, level("", "All"), level("critical", "Critical"), level("high", "High"), level("medium", "Medium"), level("low", "Low"))),
         studyChips(params.study, (code) => swap({ ...params, study: code }))),
       groups.map(([level, list]) => [
         h("div", { class: "group-label" }, sev(level), `${cap(level)} · ${list.length}`),
@@ -543,8 +601,49 @@ const SCREENS = {
   },
 
   async analysis(params, alive) {
-    if (!params.id) return analysisList();
+    if (!params.id) return analysisList(alive);
     await analysisScreen(params.id, alive);
+  },
+
+  /** What Trial Ops texts the manager: alerts as they're raised, and a morning briefing. */
+  async prefs(params, alive) {
+    let p = await api("prefs");
+    if (!alive()) return;
+    const ui = { message: "", lastTime: p.briefing !== "off" ? p.briefing : "08:00" };
+    const save = async (change) => {
+      ui.message = "Saving…";
+      paint();
+      try {
+        p = await api("prefs", change);
+        if (p.briefing !== "off") ui.lastTime = p.briefing;
+        ui.message = "Saved.";
+      } catch (e) {
+        ui.message = e.message;
+      }
+      if (alive()) paint();
+    };
+    function paint(first = false) {
+      const on = p.briefing !== "off";
+      const time = h("input", { type: "time", class: "field time", id: "briefing-time", value: on ? p.briefing : ui.lastTime, step: 300,
+        onchange: (ev) => { if (ev.target.value && ev.target.value !== p.briefing) save({ briefing: ev.target.value }); } });
+      show({ quiet: !first },
+        header("Notifications", "What Trial Ops texts you.", "Alerts as they're raised, and a short briefing each morning."),
+        sectionHead("Alert texts"),
+        h("div", { class: "segmented wrap", role: "group", "aria-label": "Alert texts" },
+          ALERT_PREFS.map(([value, label]) => h("button", { type: "button", "aria-pressed": String(p.alerts === value), onclick: () => { if (p.alerts !== value) save({ alerts: value }); } }, label))),
+        h("p", { class: "pref-note" }, ALERT_PREF_NOTE[p.alerts] ?? ""),
+        sectionHead("Morning briefing"),
+        h("div", { class: "card list" },
+          h("div", { class: "list-row" },
+            h("span", { class: "text" }, h("b", {}, "Morning briefing"), h("small", {}, on ? `Every morning at ${clock12(p.briefing)}.` : "Off.")),
+            h("button", { type: "button", class: "switch", role: "switch", "aria-checked": String(on), "aria-label": "Morning briefing",
+              onclick: () => save({ briefing: on ? "off" : ui.lastTime }) }, h("span", { class: "knob", "aria-hidden": "true" }))),
+          on ? h("div", { class: "list-row" }, h("label", { class: "text", for: "briefing-time" }, h("span", { class: "label" }, "Text me at")), time) : null),
+        h("p", { class: "pref-note" }, `What changed, what's waiting on you, and anything high. Times are in ${p.timeZone}.`),
+        ui.message ? h("p", { class: "note", role: "status" }, ui.message) : null,
+        bar());
+    }
+    paint(true);
   },
 
   async quality(params) {
@@ -588,6 +687,21 @@ const SCREENS = {
   },
 };
 
+// Notifications ---------------------------------------------------------------------------------
+
+const ALERT_PREFS = [["all", "All"], ["high", "High and critical"], ["critical", "Critical only"], ["off", "Off"]];
+const ALERT_PREF_NOTE = {
+  all: "A text whenever an alert is raised in your studies.",
+  high: "A text when a high or critical alert is raised.",
+  critical: "A text only when a critical alert is raised.",
+  off: "No alert texts. Alerts still show here and in the briefing.",
+};
+/** "08:00" → "8:00 AM". */
+const clock12 = (hhmm) => {
+  const [hh, mm] = hhmm.split(":").map(Number);
+  return `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`;
+};
+
 // Analyses: heavy work on the cloud computer, started from chat. The same screen opens from an
 // iMessage card and in the ops website's side panel (an iframe about 420px wide), so it stays one
 // fluid column. While it runs: the four phases, a ticking timer, the machine, and the live log.
@@ -617,8 +731,7 @@ const duration = (seconds) => {
   return `${Math.floor(m / 60)} h ${m % 60} min`;
 };
 
-async function analysisList() {
-  const { analyses } = await api("analyses");
+function analysisRows(analyses) {
   return [
     header("Analyses", analyses.length ? `${plural(analyses.length, "analysis", "analyses")}.` : "None yet.",
       "Bigger questions run on a cloud computer. Ask Trial Ops in Messages to start one."),
@@ -631,7 +744,22 @@ async function analysisList() {
       ],
     })).map((r) => { r.querySelector("small")?.classList.add("clamp"); return r; }), "No analyses yet.") : null,
     bar(),
-  ];
+  ].map((n) => { if (n?.classList?.contains("card")) n.classList.add("space"); return n; });
+}
+
+/** The list of analyses, re-read every 5 seconds while any of them is running. */
+async function analysisList(alive) {
+  let { analyses } = await api("analyses");
+  if (!alive()) return;
+  show(...analysisRows(analyses));
+  while (analyses.some((a) => a.status === "running")) {
+    await new Promise((r) => setTimeout(r, 5000));
+    if (!alive()) return;
+    if (document.visibilityState !== "visible") continue;
+    try { ({ analyses } = await api("analyses")); } catch { continue; }
+    if (!alive()) return;
+    show({ quiet: true }, ...analysisRows(analyses));
+  }
 }
 
 /** The four phases: done (check), active (a calm pulse), to do, failed (!), or where it was stopped (–). */
