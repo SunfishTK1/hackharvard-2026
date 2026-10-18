@@ -15,6 +15,7 @@ Find this guide at **https://hackharvard2026.velroi.com**, at `/opt/apps/README.
 | DB Browser | https://dbview.hackharvard2026.velroi.com | `db-browser` | Read-only viewer of every table in the clinical trial database, with foreign-key links. Shared team password. |
 | Trial manager view | https://trial-manager.hackharvard2026.velroi.com | `clinical-trial-manager-view` | Web UI for trial managers |
 | Server load view | https://load.hackharvard2026.velroi.com | `server-load-view` | Live server load dashboard |
+| Trial ops home | https://ops.hackharvard2026.velroi.com | `ops-home` | Portfolio home for trial managers, live from the clinical trials database |
 | Proxy | ports 80 and 443 | `proxy` | Caddy: routes each address to its app and handles HTTPS |
 
 Each app folder has its own README with app-specific details.
