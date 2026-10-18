@@ -9,13 +9,16 @@ export const AGENT_NAME = "First Light";
 
 const photo = await readFile(join(import.meta.dirname, "..", "public", "firstlight.jpg"));
 
-export function agentContact(linePhone: string, publicUrl: string): ContentBuilder {
+const ABOUT = "The first light of the universe: 13.8 billion years on the road and still the first to show up.";
+
+/** Without `publicUrl` (no agent running to race), the card leaves out the game and the invitation. */
+export function agentContact(linePhone: string, publicUrl?: string): ContentBuilder {
   return contact({
     name: { first: AGENT_NAME, formatted: AGENT_NAME },
     phones: [{ value: linePhone, type: "mobile" }],
     org: { name: AGENT_NAME, title: "AI agent" },
-    urls: [publicUrl],
-    note: "The first light of the universe: 13.8 billion years on the road and still the first to show up. Text me to race Charles Sprint.",
+    ...(publicUrl ? { urls: [publicUrl] } : {}),
+    note: publicUrl ? `${ABOUT} Text me to race Charles Sprint.` : ABOUT,
     photo: { mimeType: "image/jpeg", read: async () => photo },
   });
 }
