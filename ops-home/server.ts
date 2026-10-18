@@ -4,8 +4,10 @@ import { extname, join, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
 import { parseEnv } from "node:util";
 import pg from "pg";
-import { loadHome } from "./home.ts";
+import { loadHome, type Queryable } from "./home.ts";
 import { agentProxy } from "./agent-proxy.ts";
+import { loadRedactor } from "./redact.ts";
+import { loadAlerts, loadCalendar, loadJourneys, loadParticipant, loadPriorities, loadReported, loadSite, loadStudies, loadStudy } from "./pages.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const DIST_DIR = join(process.cwd(), "dist");
@@ -34,19 +36,25 @@ pool?.on("error", (err) => console.error("pg pool error:", err.message));
 // Agentic mode: /api/agent/* goes to the Trial Ops API, server to server (see agent-proxy.ts).
 const agent = agentProxy(env);
 
-let cache: { at: number; body: string } | null = null;
-let inFlight: Promise<string> | null = null;
+const cache = new Map<string, { at: number; body: string }>();
+const inFlight = new Map<string, Promise<string>>();
 
-async function buildHome(): Promise<string> {
+class NotFound extends Error {}
+
+/** Runs one page loader in a READ ONLY transaction and returns its JSON. */
+async function build(load: (db: Queryable) => Promise<unknown>): Promise<string> {
   if (!pool) throw new Error("DATABASE_URL is not configured on the server.");
   const client = await pool.connect();
   try {
     await client.query("BEGIN READ ONLY");
     await client.query("SET LOCAL statement_timeout = '8s'");
     await client.query("SELECT set_config('app.request_id', $1, true)", [`ops-home:${randomUUID()}`]);
-    const data = await loadHome(client, DISPLAY_TZ);
+    const data = await load(client);
+    if (data === null) throw new NotFound();
+    // Participant names never leave the server; free text is scrubbed to participant codes.
+    const redact = await loadRedactor(client);
     await client.query("COMMIT");
-    return JSON.stringify(data);
+    return redact(JSON.stringify(data));
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;
@@ -55,19 +63,36 @@ async function buildHome(): Promise<string> {
   }
 }
 
-// One build at a time, shared by concurrent requests; the server has a single vCPU.
-async function homeJson(): Promise<string> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.body;
-  inFlight ??= buildHome()
-    .then((body) => {
-      cache = { at: Date.now(), body };
-      return body;
-    })
-    .finally(() => {
-      inFlight = null;
-    });
-  return inFlight;
+// One build per page at a time, shared by concurrent requests; the server has a single vCPU.
+function cached(key: string, load: (db: Queryable) => Promise<unknown>): Promise<string> {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return Promise.resolve(hit.body);
+  let pending = inFlight.get(key);
+  if (!pending) {
+    pending = build(load)
+      .then((body) => {
+        cache.set(key, { at: Date.now(), body });
+        return body;
+      })
+      .finally(() => inFlight.delete(key));
+    inFlight.set(key, pending);
+  }
+  return pending;
 }
+
+// Codes are the database's own (STUDY-001, SITE-001-A, STUDY-001-P003).
+const CODE = "([A-Za-z0-9][A-Za-z0-9-]{0,39})";
+const API_ROUTES: Array<[RegExp, (m: RegExpMatchArray) => (db: Queryable) => Promise<unknown>]> = [
+  [/^\/api\/home$/, () => async (db) => ({ ...(await loadHome(db, DISPLAY_TZ)), priorities: await loadPriorities(db, DISPLAY_TZ) })],
+  [/^\/api\/studies$/, () => (db) => loadStudies(db, DISPLAY_TZ)],
+  [new RegExp(`^/api/studies/${CODE}$`), (m) => (db) => loadStudy(db, m[1], DISPLAY_TZ)],
+  [new RegExp(`^/api/sites/${CODE}$`), (m) => (db) => loadSite(db, m[1], DISPLAY_TZ)],
+  [new RegExp(`^/api/participants/${CODE}$`), (m) => (db) => loadParticipant(db, m[1], DISPLAY_TZ)],
+  [/^\/api\/alerts$/, () => (db) => loadAlerts(db, DISPLAY_TZ)],
+  [/^\/api\/journeys$/, () => (db) => loadJourneys(db, DISPLAY_TZ)],
+  [/^\/api\/calendar$/, () => (db) => loadCalendar(db, DISPLAY_TZ)],
+  [new RegExp(`^/api/reported(?:/${CODE})?$`), (m) => (db) => loadReported(db, m[1] ?? null, DISPLAY_TZ)],
+];
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -91,15 +116,20 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (urlPath === "/api/home" && req.method === "GET") {
-    try {
-      const body = await homeJson();
-      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  if (urlPath.startsWith("/api/")) {
+    const json = (status: number, body: string) => {
+      res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       res.end(body);
+    };
+    const route = req.method === "GET" ? API_ROUTES.map(([re, make]) => [urlPath.match(re), make] as const).find(([m]) => m) : undefined;
+    if (!route) return json(404, JSON.stringify({ error: "Not found." }));
+    const [match, make] = route;
+    try {
+      json(200, await cached(urlPath, make(match!)));
     } catch (err) {
-      console.error("home error:", err instanceof Error ? err.message : err);
-      res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ error: pool ? "The clinical trials database is unreachable right now." : "No database is configured." }));
+      if (err instanceof NotFound) return json(404, JSON.stringify({ error: "Nothing here with that code." }));
+      console.error(`${urlPath} error:`, err instanceof Error ? err.message : err);
+      json(503, JSON.stringify({ error: pool ? "The clinical trials database is unreachable right now." : "No database is configured." }));
     }
     return;
   }

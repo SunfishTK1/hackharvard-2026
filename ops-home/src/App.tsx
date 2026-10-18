@@ -1,95 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import Alerts from "./pages/Alerts";
+import Calendar from "./pages/Calendar";
+import Journeys from "./pages/Journeys";
+import Participant from "./pages/Participant";
+import Reported from "./pages/Reported";
+import Site from "./pages/Site";
+import StudiesPage from "./pages/Studies";
+import Study from "./pages/Study";
 import { Agentic } from "./Agentic";
 import { savePending } from "./ask";
+import { AskContext, AskLink, BLUE, Footer, Header, INK, MUTED, PANEL, Source, TopPriorities, modeFromUrl, s, usePath, useShowAll, useSources, type Mode } from "./ui";
 import type { BlindSpot, Change, HomeData, PipelinePoint, StudyRow, WaitingGroup, WaitingPerson } from "./types";
 
-type Mode = "classic" | "agentic";
-const modeFromUrl = (): Mode => (new URLSearchParams(location.search).get("mode") === "agentic" ? "agentic" : "classic");
 const REFRESH_MS = 5 * 60_000;
-
-const INK = "#1D1D1F";
-const MUTED = "rgba(0,0,0,0.56)";
-const BLUE = "#0071E3";
-const PANEL = "#F5F5F7";
-
-const s = {
-  eyebrow: { fontSize: 15, fontWeight: 600, color: MUTED } as CSSProperties,
-  h2: { margin: 0, fontSize: 40, fontWeight: 600, letterSpacing: "-0.02em" } as CSSProperties,
-  lede: { margin: "0 0 20px", fontSize: 17, color: MUTED, maxWidth: 720 } as CSSProperties,
-  section: { maxWidth: 1200, margin: "0 auto", padding: "72px 24px 40px", display: "flex", flexDirection: "column", gap: 10 } as CSSProperties,
-  source: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, color: MUTED } as CSSProperties,
-  muted: { color: MUTED } as CSSProperties,
-};
-
-type Ask = (question: string) => void;
-
-/** A quiet "Ask Trial Ops" link: switches to Agentic mode and sends the question there. */
-function AskLink({ question, onAsk, label = "Ask Trial Ops", className = "" }: { question: string; onAsk: Ask; label?: string; className?: string }) {
-  return (
-    <button type="button" className={`ask-link ${className}`.trim()} onClick={() => onAsk(question)} title={question}>
-      {label}
-    </button>
-  );
-}
-
-function Source({ show, children, style }: { show: boolean; children: ReactNode; style?: CSSProperties }) {
-  return show ? <div style={{ ...s.source, ...style }}>{children}</div> : null;
-}
-
-function Header({ mode, onMode, account, onSignOut }: { mode: Mode; onMode: (m: Mode) => void; account: string | null; onSignOut: () => void }) {
-  const link: CSSProperties = { display: "flex", alignItems: "center", minHeight: 48, color: INK, textDecoration: "none" };
-  const nav: Array<[string, string | null]> = [
-    ["Studies", "#studies"], ["Journeys", "#pipeline"], ["Reported data", "#blind-spots"],
-    ["Alerts", "#waiting"], ["Messages", null], ["Documents", null],
-  ];
-  // Both modes live on this page: the toggle switches in place and keeps ?mode= in the address.
-  const go = (m: Mode) => (e: MouseEvent<HTMLAnchorElement>) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    e.preventDefault();
-    onMode(m);
-  };
-  const bar = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const el = bar.current;
-    if (!el) return;
-    const measure = () => document.documentElement.style.setProperty("--topbar-h", `${Math.round(el.getBoundingClientRect().height)}px`);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return (
-    <header className="topbar" ref={bar}>
-      <nav aria-label="Primary" className="topnav">
-        <a href={mode === "classic" ? "#top" : "?mode=agentic"} aria-current="page" className="brand">
-          <span aria-hidden="true" className="brand-mark" />Trial Ops
-        </a>
-        {mode === "classic" ? (
-          <div className="topnav-links">
-            {nav.map(([label, href]) =>
-              href ? (
-                <a key={label} href={href} style={link}>{label}</a>
-              ) : (
-                <span key={label} style={{ ...link, color: "rgba(0,0,0,0.32)" }} title="Coming soon">{label}</span>
-              ),
-            )}
-          </div>
-        ) : account ? (
-          <div className="account">
-            <span>Signed in as <span style={{ color: INK, fontWeight: 600 }}>{account}</span></span>
-            <button type="button" className="link-button" onClick={onSignOut}>Sign out</button>
-          </div>
-        ) : (
-          <div className="topnav-spacer" />
-        )}
-        <div role="group" aria-label="Mode" className="mode-toggle">
-          <a href="?" onClick={go("classic")} aria-current={mode === "classic" ? "page" : undefined} className={mode === "classic" ? "mode-on" : "mode-off"}>Classic</a>
-          <a href="?mode=agentic" onClick={go("agentic")} aria-current={mode === "agentic" ? "page" : undefined} className={mode === "agentic" ? "mode-on" : "mode-off"}>Agentic</a>
-        </div>
-      </nav>
-    </header>
-  );
-}
 
 function Hero({ data }: { data: HomeData }) {
   return (
@@ -98,8 +21,8 @@ function Hero({ data }: { data: HomeData }) {
       <h1 className="hero-title">{data.hero.headline[0]}<br />{data.hero.headline[1]}</h1>
       <p className="hero-body">{data.hero.body}</p>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px 28px", marginTop: 10 }}>
-        <a href="#changed" className="pill">See what changed</a>
-        <a href="#pipeline" style={{ fontSize: 17, textDecoration: "none" }}>Every participant’s journey →</a>
+        <a href="#priorities-title" className="pill">See top priorities</a>
+        <a href="/journeys" style={{ fontSize: 17, textDecoration: "none" }}>Participant timelines →</a>
       </div>
     </section>
   );
@@ -119,12 +42,13 @@ function changeQuestion(c: Change): string {
   return `Tell me more about this: "${c.text}" (${c.where})`;
 }
 
-function Changes({ data, showSources, onAsk }: { data: HomeData; showSources: boolean; onAsk: Ask }) {
+function Changes({ data, showSources }: { data: HomeData; showSources: boolean }) {
+  // Items needing follow-up come first (the server sorts them), so the first few are the ones that matter.
+  const { shown, toggle } = useShowAll(data.changes.items, 6);
   return (
     <section id="changed" style={{ background: PANEL, padding: "72px 24px" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: 48 }}>
         <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={s.eyebrow}>Since yesterday</div>
           <h2 style={s.h2}>{data.changes.heading}</h2>
           <p style={{ margin: 0, fontSize: 17, color: MUTED }}>{data.changes.subheading}</p>
           <Source show={showSources} style={{ marginTop: 8 }}>
@@ -133,7 +57,7 @@ function Changes({ data, showSources, onAsk }: { data: HomeData; showSources: bo
         </div>
         {data.changes.items.length > 0 && (
           <div className="stagger change-list">
-            {data.changes.items.map((c, i) => {
+            {shown.map((c, i) => {
               return (
                 <div key={i} className="row change-row">
                   <span style={{ fontSize: 13, color: MUTED, fontVariantNumeric: "tabular-nums" }}>{c.when}</span>
@@ -145,12 +69,13 @@ function Changes({ data, showSources, onAsk }: { data: HomeData; showSources: bo
                     )}
                     <span style={{ fontSize: 13, color: MUTED }}>{c.where}</span>
                     <span className="ask-sep" aria-hidden="true"> · </span>
-                    <AskLink question={changeQuestion(c)} onAsk={onAsk} />
+                    <AskLink question={changeQuestion(c)} />
                   </span>
                   <span style={tagStyle(c.kind)}>{c.tag}</span>
                 </div>
               );
             })}
+            {toggle && <div style={{ padding: "10px 16px 6px" }}>{toggle}</div>}
           </div>
         )}
       </div>
@@ -160,7 +85,7 @@ function Changes({ data, showSources, onAsk }: { data: HomeData; showSources: bo
 
 const BAR_SCALE_DAYS = 10;
 
-function Person({ p, open, onToggle, onAsk }: { p: WaitingPerson; open: boolean; onToggle: () => void; onAsk: Ask }) {
+function Person({ p, open, onToggle }: { p: WaitingPerson; open: boolean; onToggle: () => void }) {
   const over = p.ageDays > p.typicalDays;
   return (
     <div style={{ background: "#FFFFFF", borderRadius: 18 }}>
@@ -188,11 +113,13 @@ function Person({ p, open, onToggle, onAsk }: { p: WaitingPerson; open: boolean;
         <div style={{ padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
           {p.items.map((i) => (
             <div key={i.code} className="person-item">
-              <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{i.code}</span>
+              {i.href
+                ? <a className="row-link" href={i.href} style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{i.code}</a>
+                : <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{i.code}</span>}
               <span>
                 {i.text}
                 <span className="ask-sep" aria-hidden="true"> · </span>
-                <AskLink question={`Tell me about ${i.code} and what's waiting on them: "${i.text}" (with ${p.name})`} onAsk={onAsk} />
+                <AskLink question={`Tell me about ${i.code} and what's waiting on them: "${i.text}" (with ${p.name})`} />
               </span>
               <span style={{ color: MUTED, whiteSpace: "nowrap" }}>{i.age}</span>
             </div>
@@ -203,36 +130,40 @@ function Person({ p, open, onToggle, onAsk }: { p: WaitingPerson; open: boolean;
   );
 }
 
-function Waiting({ data, showSources, onAsk }: { data: HomeData; showSources: boolean; onAsk: Ask }) {
-  const first = data.waiting.groups.find((g) => g.people.length)?.people[0]?.name ?? null;
-  const [open, setOpen] = useState<string | null>(first);
+function WaitingGroupCard({ g, open, setOpen }: { g: WaitingGroup; open: string | null; setOpen: (name: string | null) => void }) {
+  const { shown, toggle } = useShowAll(g.people, 4);
   return (
-    <section id="waiting" style={{ ...s.section, padding: "96px 24px 40px" }}>
-      <div style={s.eyebrow}>Waiting on</div>
-      <h2 style={s.h2}>Who has the next move.</h2>
-      <p style={s.lede}>Every open item, grouped by the person who has to act. The bar shows how long it has waited against what is typical for this step.</p>
+    <div style={{ background: PANEL, borderRadius: 28, padding: 24, display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 8px 12px", gap: 12 }}>
+        <h3 style={{ margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: "-0.01em" }}>{g.title}</h3>
+        <span style={{ fontSize: 15, color: MUTED }}>{g.summary}</span>
+      </div>
+      {g.people.length === 0 && <div style={{ padding: "4px 8px", color: MUTED }}>Nothing is waiting.</div>}
+      {shown.map((p) => (
+        <Person key={p.name} p={p} open={open === p.name} onToggle={() => setOpen(open === p.name ? null : p.name)} />
+      ))}
+      {toggle && <div style={{ padding: "8px 8px 0" }}>{toggle}</div>}
+    </div>
+  );
+}
+
+function Waiting({ data, showSources }: { data: HomeData; showSources: boolean }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <section id="waiting" style={{ ...s.section, padding: "88px 24px 40px" }}>
+      <h2 style={s.h2}>Waiting on staff</h2>
+      <p style={s.lede}>Open items grouped by the person who needs to act, longest wait first. Each bar compares the oldest item’s wait with the usual time for that step.</p>
       <Source show={showSources} style={{ marginBottom: 8 }}>
         workflow_tasks (waiting_review, pending) + alerts (open, acknowledged) + enrolled awaiting baseline + unanswered messages
         → assigned_staff_id → study_staff → private.staff_users · typical = median of completed steps of the same kind
       </Source>
       <div className="bento two">
-        {data.waiting.groups.map((g: WaitingGroup) => (
-          <div key={g.title} style={{ background: PANEL, borderRadius: 28, padding: 24, display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "4px 8px 12px", gap: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 24, fontWeight: 600, letterSpacing: "-0.01em" }}>{g.title}</h3>
-              <span style={{ fontSize: 15, color: MUTED }}>{g.summary}</span>
-            </div>
-            {g.people.length === 0 && <div style={{ padding: "4px 8px", color: MUTED }}>Nothing waiting.</div>}
-            {g.people.map((p) => (
-              <Person key={p.name} p={p} open={open === p.name} onToggle={() => setOpen(open === p.name ? null : p.name)} onAsk={onAsk} />
-            ))}
-          </div>
-        ))}
+        {data.waiting.groups.map((g: WaitingGroup) => <WaitingGroupCard key={g.title} g={g} open={open} setOpen={setOpen} />)}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 32px", marginTop: 12, padding: "18px 8px 0", fontSize: 15 }}>
-        <span><span style={{ fontWeight: 600 }}>Waiting on participants.</span> <span style={s.muted}>{data.waiting.onParticipants}</span></span>
+        <span><span style={{ fontWeight: 600 }}>Waiting on participants:</span> <span style={s.muted}>{data.waiting.onParticipants}</span></span>
         {data.waiting.notStarted && (
-          <span><span style={{ fontWeight: 600 }}>Not started.</span> <span style={s.muted}>{data.waiting.notStarted}</span></span>
+          <span><span style={{ fontWeight: 600 }}>Not started:</span> <span style={s.muted}>{data.waiting.notStarted}</span></span>
         )}
       </div>
     </section>
@@ -295,7 +226,6 @@ function Pipeline({ data, showSources }: { data: HomeData; showSources: boolean 
   const dot = (style: CSSProperties) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 980, ...style }} />;
   return (
     <section id="pipeline" style={s.section}>
-      <div style={s.eyebrow}>Pipeline speed</div>
       <h2 style={s.h2}>{p.heading}</h2>
       <p style={s.lede}>{p.body}</p>
       <div className="bento pipeline">
@@ -326,39 +256,38 @@ function Pipeline({ data, showSources }: { data: HomeData; showSources: boolean 
   );
 }
 
-function BlindSpots({ data, showSources, onAsk }: { data: HomeData; showSources: boolean; onAsk: Ask }) {
-  const cards = data.blindSpots.cards;
+function BlindSpots({ data, showSources }: { data: HomeData; showSources: boolean }) {
+  const { shown: cards, toggle } = useShowAll(data.blindSpots.cards, 4);
   return (
     <section id="blind-spots" style={s.section}>
-      <div style={s.eyebrow}>Blind spots</div>
-      <h2 style={s.h2}>What no alert rule caught.</h2>
-      <p style={s.lede}>Patterns found across the data that the current rules don’t cover. Worth a look, or a new rule.</p>
+      <h2 style={s.h2}>Patterns outside the alert rules</h2>
+      <p style={s.lede}>Issues found in the data that no current alert rule covers. Each may need follow-up, or a new rule.</p>
       <Source show={showSources} style={{ marginBottom: 8 }}>
         device-reading gaps · inbound messages with no staff reply · repeat threshold alerts within 30 days · silent before a visit
       </Source>
       {cards.length === 0 ? (
-        <p style={{ margin: 0, fontSize: 17, color: MUTED }}>Nothing unusual found.</p>
+        <p style={{ margin: 0, fontSize: 17, color: MUTED }}>No patterns found outside the current rules.</p>
       ) : (
         <div className="bento two stagger">
           {cards.map((b: BlindSpot, i) => (
-            <div key={i} style={{ background: PANEL, borderRadius: 28, padding: 28, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div key={i} className="blind-card" style={{ background: PANEL, borderRadius: 28, padding: 28, display: "flex", flexDirection: "column", gap: 6, color: INK }}>
               <div style={{ fontSize: 13, color: MUTED }}>{b.context}</div>
-              <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>{b.title}</div>
+              {b.href
+                ? <a className="row-link" href={b.href} style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>{b.title}</a>
+                : <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>{b.title}</div>}
               <div style={{ fontSize: 15, lineHeight: 1.47 }}>{b.body}</div>
-              <div style={{ marginTop: 6 }}>
-                <AskLink
-                  question={`${b.title} (${b.context}) ${b.body} ${b.action.replace(/\s*→\s*$/, "")}: help me with this.`}
-                  onAsk={onAsk} label={b.action} className="ask-action"
-                />
-                <span className="ask-hint"> in Trial Ops</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px", marginTop: 6, fontSize: 15 }}>
+                {b.href && <a href={b.href} style={{ textDecoration: "none" }}>{b.action}</a>}
+                <AskLink question={`${b.title} (${b.context}) ${b.body} Help me with this.`} className="ask-action" />
               </div>
             </div>
           ))}
         </div>
       )}
+      {toggle && <div style={{ padding: "4px 8px" }}>{toggle}</div>}
       {data.blindSpots.dataQuality && (
         <div style={{ marginTop: 14, padding: "0 8px", fontSize: 14, color: MUTED }}>
-          <span style={{ fontWeight: 600, color: INK }}>Data quality.</span> {data.blindSpots.dataQuality}
+          <span style={{ fontWeight: 600, color: INK }}>Data quality:</span> {data.blindSpots.dataQuality}
         </div>
       )}
     </section>
@@ -376,11 +305,21 @@ const cssToStyle = (css: string): CSSProperties =>
   Object.fromEntries(css.split(";").map((d) => d.split(":").map((x) => x.trim())).filter(([k]) => k)
     .map(([k, v]) => [k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]));
 
-function Studies({ data, showSources, onAsk }: { data: HomeData; showSources: boolean; onAsk: Ask }) {
+const HOME_STUDY_LIMIT = 6;
+// Studies with open alerts or a waiting investigator first, so the short list shows the ones that need attention.
+const attention = (r: StudyRow) => (parseInt(r.alerts, 10) || 0) + (r.waiting === "No one" ? 0 : 1);
+
+function Studies({ data, showSources }: { data: HomeData; showSources: boolean }) {
+  const rows = [...data.studies.rows].sort((a, b) => attention(b) - attention(a));
+  const quiet = rows.filter((r) => attention(r) === 0).length;
   return (
     <section id="studies" style={{ ...s.section, padding: "72px 24px 120px" }}>
-      <div style={s.eyebrow}>Study health</div>
-      <h2 style={{ ...s.h2, marginBottom: 16 }}>{data.studies.heading}</h2>
+      <h2 style={s.h2}>Study status</h2>
+      <p style={{ ...s.lede, marginBottom: 16 }}>
+        {data.studies.heading}{" "}
+        {quiet === rows.length ? "None have open alerts or pending decisions."
+          : quiet ? `${quiet} ${quiet === 1 ? "has" : "have"} no open alerts or pending decisions.` : ""}
+      </p>
       <Source show={showSources} style={{ marginBottom: 8 }}>public.studies ⋈ participants ⋈ alerts ⋈ workflow_tasks · trial manager from study_staff (role = trial_manager)</Source>
       <div style={{ overflowX: "auto", margin: "0 -8px" }}>
         <div role="table" aria-label="Study health" style={{ minWidth: 1000, padding: "0 8px" }}>
@@ -388,13 +327,15 @@ function Studies({ data, showSources, onAsk }: { data: HomeData; showSources: bo
             <span role="columnheader">Study</span><span role="columnheader">Participants</span><span role="columnheader">Consent</span>
             <span role="columnheader">Alerts</span><span role="columnheader">Waiting on an investigator</span>
           </div>
-          {data.studies.rows.map((r) => (
-            <div role="row" key={r.meta} className="row study-grid" style={{ alignItems: "center", minHeight: 80, padding: "0 16px", borderRadius: 18, fontVariantNumeric: "tabular-nums" }}>
+          {rows.slice(0, HOME_STUDY_LIMIT).map((r) => (
+            <div role="row" key={r.meta} className="row study-grid" style={{ alignItems: "center", minHeight: 80, padding: "10px 16px", borderRadius: 18, fontVariantNumeric: "tabular-nums" }}>
               <span role="cell">
-                <span style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{r.short}</span>
+                {r.href
+                  ? <a className="row-link" href={r.href} style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{r.short}</a>
+                  : <span style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{r.short}</span>}
                 <span style={{ fontSize: 13, color: MUTED }}>{r.meta}</span>
                 <span style={{ display: "block" }}>
-                  <AskLink question={`How is ${r.short.split(" · ")[0]} doing? (${r.meta.split(" · ")[0]})`} onAsk={onAsk} />
+                  <AskLink question={`How is ${r.short.split(" · ")[0]} doing? (${r.meta.split(" · ")[0]})`} />
                 </span>
               </span>
               <span role="cell" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -423,53 +364,40 @@ function Studies({ data, showSources, onAsk }: { data: HomeData; showSources: bo
           </span>
         ))}
       </div>
+      <a href="/studies" style={{ alignSelf: "flex-start", marginTop: 16, fontSize: 17, textDecoration: "none" }}>
+        {rows.length > HOME_STUDY_LIMIT ? `View all ${rows.length} studies →` : "View studies →"}
+      </a>
     </section>
   );
 }
 
-function Footer({ data, showSources, onToggleSources }: { data: HomeData; showSources: boolean; onToggleSources: () => void }) {
-  const time = new Date(data.generatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+// Classic-mode routes. Codes are the database's own (STUDY-001, SITE-001-A, STUDY-001-P003).
+function route(path: string) {
+  const m = (re: RegExp) => path.match(re)?.[1];
+  const code = (re: RegExp) => (m(re) ? decodeURIComponent(m(re)!) : null);
+  if (path === "/" || path === "") return <Home />;
+  if (path === "/studies") return <StudiesPage />;
+  if (code(/^\/studies\/([^/]+)$/)) return <Study key={path} code={code(/^\/studies\/([^/]+)$/)!} />;
+  if (code(/^\/sites\/([^/]+)$/)) return <Site key={path} code={code(/^\/sites\/([^/]+)$/)!} />;
+  if (code(/^\/participants\/([^/]+)$/)) return <Participant key={path} code={code(/^\/participants\/([^/]+)$/)!} />;
+  if (path === "/alerts") return <Alerts />;
+  if (path === "/journeys") return <Journeys />;
+  if (path === "/calendar") return <Calendar />;
+  if (path === "/reported") return <Reported code={null} />;
+  if (code(/^\/reported\/([^/]+)$/)) return <Reported code={code(/^\/reported\/([^/]+)$/)} />;
   return (
-    <footer style={{ borderTop: "1px solid rgba(0,0,0,0.08)", padding: "20px 24px 40px" }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: "8px 24px", justifyContent: "space-between", fontSize: 13, color: MUTED }}>
-        <span>Live from the clinical_trials database · synthetic data only · updated {time}</span>
-        <button type="button" onClick={onToggleSources} className="link-button">{showSources ? "Hide data sources" : "Show data sources"}</button>
-      </div>
-    </footer>
+    <div className="status" role="status">
+      <p style={{ fontSize: 28, fontWeight: 600, color: INK }}>Nothing here.</p>
+      <a href="/" className="pill">Back to the portfolio</a>
+    </div>
   );
 }
 
 export default function App() {
+  const path = usePath().replace(/\/+$/, "") || "/";
   const [mode, setMode] = useState<Mode>(modeFromUrl);
   const [account, setAccount] = useState<string | null>(null);
   const [session, setSession] = useState(0);
-  const [data, setData] = useState<HomeData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showSources, setShowSources] = useState(() => new URLSearchParams(location.search).has("sources"));
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/home");
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
-      setData(body as HomeData);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load the portfolio.");
-    }
-  }, []);
-
-  useEffect(() => {
-    if (mode !== "classic") return;
-    load();
-    const timer = setInterval(load, REFRESH_MS);
-    const onFocus = () => document.visibilityState === "visible" && load();
-    document.addEventListener("visibilitychange", onFocus);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onFocus);
-    };
-  }, [load, mode]);
 
   const switchMode = (next: Mode) => {
     const url = new URL(location.href);
@@ -498,29 +426,60 @@ export default function App() {
     setSession((n) => n + 1);
   };
 
-  const toggleSources = () => {
-    const next = !showSources;
-    setShowSources(next);
-    const url = new URL(location.href);
-    if (next) url.searchParams.set("sources", "");
-    else url.searchParams.delete("sources");
-    history.replaceState(null, "", url);
-  };
-
+  useEffect(() => {
+    const titles: Array<[RegExp, string]> = [[/^\/studies$/, "Studies"], [/^\/studies\//, "Study"], [/^\/sites\//, "Site"],
+      [/^\/participants\//, "Participant"], [/^\/alerts/, "Alerts"], [/^\/calendar/, "Calendar"], [/^\/journeys/, "Journeys"], [/^\/reported/, "Reported data"]];
+    document.title = `Trial Ops · ${titles.find(([re]) => re.test(path))?.[1] ?? "Portfolio home"}`;
+  }, [path]);
+  const header = <Header path={path} mode={mode} onMode={switchMode} account={account} onSignOut={signOut} />;
   if (mode === "agentic") {
     return (
       <>
-        <Header mode={mode} onMode={switchMode} account={account} onSignOut={signOut} />
+        {header}
         <div className="agentic-root">
           <Agentic key={session} onAccount={setAccount} />
         </div>
       </>
     );
   }
+  return (
+    <AskContext.Provider value={ask}>
+      {header}
+      {route(path)}
+    </AskContext.Provider>
+  );
+}
+
+function Home() {
+  const [data, setData] = useState<HomeData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showSources, toggleSources] = useSources();
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/home");
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+      setData(body as HomeData);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load the portfolio.");
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, REFRESH_MS);
+    const onFocus = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [load]);
 
   return (
     <>
-      <Header mode={mode} onMode={switchMode} account={account} onSignOut={signOut} />
       {!data ? (
         <div className="status" role="status">
           {error ? (
@@ -536,12 +495,13 @@ export default function App() {
         <main>
           {error && <div className="stale" role="status">Showing data from {new Date(data.generatedAt).toLocaleTimeString()}. {error}</div>}
           <Hero data={data} />
-          <Changes data={data} showSources={showSources} onAsk={ask} />
-          <Waiting data={data} showSources={showSources} onAsk={ask} />
+          {data.priorities && <TopPriorities data={data.priorities} scope="across all studies" />}
+          <Changes data={data} showSources={showSources} />
+          <Waiting data={data} showSources={showSources} />
           <Pipeline data={data} showSources={showSources} />
-          <BlindSpots data={data} showSources={showSources} onAsk={ask} />
-          <Studies data={data} showSources={showSources} onAsk={ask} />
-          <Footer data={data} showSources={showSources} onToggleSources={toggleSources} />
+          <BlindSpots data={data} showSources={showSources} />
+          <Studies data={data} showSources={showSources} />
+          <Footer generatedAt={data.generatedAt} showSources={showSources} onToggleSources={toggleSources} />
         </main>
       )}
     </>
