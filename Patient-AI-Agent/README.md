@@ -73,6 +73,8 @@ npm run enroll -- +16175550123 --due-now     # --due-now opens today's check-in 
 - **Reaching out.** Once a minute it checks for new alerts at each manager's studies (high and critical by default) and texts them, several in one message, with the alert card; and it sends a morning briefing at 8:00 with the portfolio card. Managers change both by asking ("only critical alerts", "briefing at 7:15", "stop the briefing") or on the mini-app's Notifications screen. `ops.notices` keeps each one from going twice.
 - **For other apps.** The core is channel-free (`core.ts`). The ops website's Agentic mode uses the internal API (`api.ts`, port 3012 on the Docker network, `TRIAL_OPS_API_TOKEN`): sign-in by a link texted to the manager, chat in the same conversation as iMessage, every view, mini-app links, analyses. `src/ops/index.ts` exports everything for use in code.
 
+When someone signs the informed consent, the site's principal investigator gets an email through Resend (`src/notify/consent.ts`): the participant's code, study, site, ICF version and time, the identity check, Sage's prescreen and the next step. No name or contact details. `PI_EMAIL` (bl108@wellesley.edu on the server) replaces the synthetic investigators' addresses; Resend only delivers to other people from a verified sender domain (`EMAIL_FROM`).
+
 Sage's writes follow the platform's conventions so ops sees Sage's participants like any other (migration `20261018000000_ops_data_flow`): readings are judged by each study's alert rules, every alert is assigned (the investigator gets safety reviews, with a review task), a second check-in in the same window corrects the first, consent steps are participant events, and enrollment requests go to the site investigator.
 
 ## Databases

@@ -142,6 +142,16 @@ export const config = {
     analystModel: pick("OPS_ANALYST_MODEL") ?? "claude-opus-5-5",
     analystEffort: (pick("OPS_ANALYST_EFFORT") ?? "medium") as "low" | "medium" | "high",
   },
+  /**
+   * Email through Resend: the site investigator hears when someone signs the informed consent. Off
+   * without a key. PI_EMAIL sends those emails to one address instead of the investigators' on file
+   * (the synthetic study staff have example.org addresses).
+   */
+  email: {
+    resendKey: pick("RESEND_API_KEY", "Resend_API_KEY"),
+    from: pick("EMAIL_FROM") ?? "Sage <onboarding@resend.dev>",
+    piOverride: pick("PI_EMAIL"),
+  },
   /** Daytona cloud computers for Trial Ops analyses. Off without an API key. */
   daytona: {
     apiKey: pick("DAYTONA_API_KEY", "Daytona_API_Key", "DAYTONA_KEY"),

@@ -11,6 +11,7 @@ import type { CheckInMeasure, TrialKnowledge, TrialSummary } from "../knowledge/
 import * as store from "../store.ts";
 import { clientSecret, fromMeasure, fromQuestion, REALTIME_MODEL, REALTIME_URL, sessionConfig } from "../voice/realtime.ts";
 import { consumeVerification } from "./verify.ts";
+import { emailInvestigator } from "../notify/consent.ts";
 
 export class HttpError extends Error {
   readonly status: number;
@@ -308,6 +309,8 @@ export class Forms {
       return at;
     });
     const when = fmtWhen(signedAt, req.trial.timezone);
+    // The site investigator hears by email; a failure there never touches the signature.
+    void emailInvestigator(form.personId, e.id, req.trial.timezone).catch((error) => console.error("email: investigator not told", (error as Error).message));
     this.assistant.onFormEvent({
       personId: form.personId, formId: form.id,
       summary: `They signed the consent form (v${doc.version}) on ${when}, after passing the understanding check. Their journey phase is now ${e.phase}.`,
