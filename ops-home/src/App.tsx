@@ -4,6 +4,7 @@ import Calendar from "./pages/Calendar";
 import Journeys from "./pages/Journeys";
 import Participant from "./pages/Participant";
 import { SiteSetup, StudySetup } from "./pages/Setup";
+import { Admin } from "./pages/Admin";
 import Site from "./pages/Site";
 import StudiesPage from "./pages/Studies";
 import Study from "./pages/Study";
@@ -405,6 +406,7 @@ function route(path: string) {
   if (path === "/calendar") return <Calendar />;
   if (path === "/setup/study") return <StudySetup />;
   if (path === "/setup/sites") return <SiteSetup key={location.search} />;
+  if (path === "/admin") return <Admin />;
   // Reported data now lives on the participant page; older links still land there.
   if (code(/^\/reported\/([^/]+)$/)) return <Redirect to={`/participants/${encodeURIComponent(code(/^\/reported\/([^/]+)$/)!)}`} />;
   if (path === "/reported") return <Redirect to="/studies" />;
@@ -451,7 +453,7 @@ export default function App() {
 
   useEffect(() => {
     const titles: Array<[RegExp, string]> = [[/^\/studies$/, "Studies"], [/^\/studies\//, "Study"], [/^\/sites\//, "Site"],
-      [/^\/participants\//, "Participant"], [/^\/alerts/, "Alerts"], [/^\/calendar/, "Calendar"], [/^\/journeys/, "Journeys"], [/^\/reported/, "Reported data"]];
+      [/^\/participants\//, "Participant"], [/^\/alerts/, "Alerts"], [/^\/calendar/, "Calendar"], [/^\/journeys/, "Journeys"], [/^\/reported/, "Reported data"], [/^\/admin/, "Admin"]];
     document.title = `Trial Ops · ${titles.find(([re]) => re.test(path))?.[1] ?? "Portfolio home"}`;
   }, [path]);
   const header = <Header path={path} mode={mode} onMode={switchMode} account={account} onSignOut={signOut} />;

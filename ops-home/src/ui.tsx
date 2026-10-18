@@ -325,7 +325,10 @@ export function Footer({ generatedAt, showSources, onToggleSources }: { generate
     <footer style={{ borderTop: "1px solid rgba(0,0,0,0.08)", padding: "20px 24px 40px" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", flexWrap: "wrap", gap: "8px 24px", justifyContent: "space-between", fontSize: 13, color: MUTED }}>
         <span>Live from the clinical_trials database · synthetic data only · updated {time}</span>
-        <button type="button" onClick={onToggleSources} className="link-button">{showSources ? "Hide data sources" : "Show data sources"}</button>
+        <span style={{ display: "flex", gap: 24 }}>
+          <button type="button" onClick={onToggleSources} className="link-button">{showSources ? "Hide data sources" : "Show data sources"}</button>
+          <a href="/admin" className="link-button">Admin</a>
+        </span>
       </div>
     </footer>
   );

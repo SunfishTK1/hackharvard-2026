@@ -32,6 +32,8 @@ Dates and "yesterday" use `America/New_York` (`DISPLAY_TZ`).
 - **Notifications**: which alerts Trial Ops texts about, and the morning briefing.
 - **From Classic**: every actionable item has an "Ask Trial Ops" link that switches here and sends the question. It's kept through sign-in.
 
+**Admin** (`/admin`, linked at the bottom of every Classic page): a signed-in Trial Ops manager can restart the patient experience for a phone. They look the number up to see its Sage journeys, then reset it so its next text to Sage starts from scratch. Only phones whose journeys are all in studies that manager works on can be reset. The old journey is archived, not deleted (`ops.reset_phone`), and the reset is audited.
+
 Sign-in, three ways, all ending in an `HttpOnly`, `SameSite=Lax` session cookie kept for 7 days:
 - **Texted link:** the manager enters their phone number and Trial Ops texts a one-time link to it, but only to phones an administrator linked (`npm run ops:link` in Patient-AI-Agent). The link lands on `?mode=agentic&signin=…`.
 - **Face ID:** "Sign in with Face ID" uses a passkey for this site. Managers turn it on once they're signed in (Notifications › Sign in with Face ID); a passkey made for a website decision works too.

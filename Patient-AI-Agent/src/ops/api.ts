@@ -14,6 +14,7 @@
 //   POST /v1/web/sign-out                    -> {ok}
 //   GET  /v1/me                              -> {name, manager, studies, computers, faceIdSignIn}
 //   POST /v1/passkeys/options, /v1/passkeys/verify {response}  adds a Face ID sign-in passkey for this device
+//   POST /v1/admin/phone {phone}, /v1/admin/reset-phone {phone}  what's on a phone; start it over with Sage
 //   GET  /v1/messages?after=&limit=          -> {messages}          the conversation, oldest first
 //   POST /v1/chat {message}                  -> {reply: {text, links}}
 //   GET  /v1/views/<view>?study=&code=&id=   -> the mini-app's view JSON
@@ -202,6 +203,27 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort, followUp
         name: config.ops.name, manager: { name: m.displayName }, studies: await store.managerStudies(ops, m.id), computers: Boolean(core.analyst),
         faceIdSignIn: rp ? await approvals.hasSitePasskey(m, rp) : false,
       });
+    }
+    // Admin: start a phone over with Sage (archives its journey, never deletes), when every journey on
+    // it is in a study this manager works on. Look it up first to see what's there.
+    const adminPhone = (raw: unknown) => {
+      const digits = String(raw ?? "").replace(/[\s().-]/g, "");
+      const phone = /^\d{10}$/.test(digits) ? `+1${digits}` : digits;
+      if (!PHONE.test(phone)) throw new ApiError(400, "Enter a phone number with country code, like +1 617 555 0123.");
+      return phone;
+    };
+    if (method === "POST" && path === "/v1/admin/phone") {
+      const [r] = await ops<{ j: unknown }>("select ops.phone_journey($1, $2) as j", [m.id, adminPhone((await body(req)).phone)]);
+      return send(res, 200, r.j);
+    }
+    if (method === "POST" && path === "/v1/admin/reset-phone") {
+      const phone = adminPhone((await body(req)).phone);
+      const [r] = await ops<{ j: { reset: boolean; journeys: unknown[] } }>("select ops.reset_phone($1, $2) as j", [m.id, phone]).catch((error) => {
+        if ((error as { code?: string }).code === "42501") throw new ApiError(403, (error as Error).message);
+        throw error;
+      });
+      console.log(`ops: ${m.displayName} reset a phone from the admin page (${r.j.journeys.length} journey(s) archived)`);
+      return send(res, 200, r.j);
     }
     // Face ID sign-in for this site: add a passkey for this device.
     if (method === "POST" && path === "/v1/passkeys/options") return send(res, 200, await approvals.addPasskeyOptions(m, siteRp()));

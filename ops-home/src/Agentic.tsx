@@ -42,7 +42,8 @@ export function normalizePhone(raw: string): string | null {
   return /^\+[1-9]\d{6,14}$/.test(e164) ? e164 : null;
 }
 
-function SignIn({ error, onSignedIn }: { error?: string; onSignedIn: () => void }) {
+/** The sign-in screen (Agentic mode, and the Classic admin page). */
+export function SignIn({ error, onSignedIn, title = "Ask Trial Ops.", lede }: { error?: string; onSignedIn: () => void; title?: string; lede?: string }) {
   const saved = peekPending();
   const [phone, setPhone] = useState("+1 ");
   const [name, setName] = useState("");
@@ -93,10 +94,9 @@ function SignIn({ error, onSignedIn }: { error?: string; onSignedIn: () => void 
   return (
     <section className="agentic-center rise">
       <div className="agentic-eyebrow">Agentic</div>
-      <h1 className="agentic-title">Ask Trial Ops.</h1>
+      <h1 className="agentic-title">{title}</h1>
       <p className="agentic-lede">
-        A conversation with the trial managers’ assistant, about live study data. It’s the same Trial Ops you can text in
-        iMessage. Sign in with the phone number your study team linked.
+        {lede ?? "A conversation with the trial managers’ assistant, about live study data. It’s the same Trial Ops you can text in iMessage. Sign in with the phone number your study team linked."}
       </p>
       {saved && (
         <div className="saved-question" role="status">

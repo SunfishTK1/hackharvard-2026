@@ -45,7 +45,7 @@ More detail: [docs/DESIGN.md](docs/DESIGN.md).
 
 **In iMessage**: text the Photon 1.0 line something like "Hi, I saw a flyer about a migraine study". (The line can only start conversations with registered numbers; anyone can text it first.)
 
-**Starting over (team phones, for demos)**: a phone linked to Trial Ops that texts Sage the team's reset code (`SAGE_RESET_CODE`, set only in the server's `.env`) starts over as someone brand new. The old journey is archived, not deleted: it's unlinked from the phone, its check-in reminders are paused, and the reset is audited (`assistant.reset_person`). From any other phone the code is just a message.
+**Starting over (team phones, for demos)**: a phone linked to Trial Ops that texts Sage the team's reset code (`SAGE_RESET_CODE`, set only in the server's `.env`) starts over as someone brand new. The old journey is archived, not deleted: it's unlinked from the phone, its check-in reminders are paused, and the reset is audited (`assistant.reset_person`). From any other phone the code is just a message. A signed-in manager can do the same for any phone in their studies from the ops website's Admin page (`ops.reset_phone`).
 
 **In the terminal**, as any phone number, with cards printed as links you open in a browser. Use a scratch copy of the database, since a journey creates platform participants:
 

@@ -123,6 +123,9 @@ const ROUTES: { method: "GET" | "POST"; path: RegExp; timeoutMs?: number; maxBod
   { method: "POST", path: /^ask-sage$/, timeoutMs: 20_000 },
   { method: "GET", path: /^prefs$/ },
   { method: "POST", path: /^prefs$/ },
+  // Admin: what's on a phone, and starting it over with Sage.
+  { method: "POST", path: /^admin\/phone$/ },
+  { method: "POST", path: /^admin\/reset-phone$/, timeoutMs: 20_000 },
   // Face ID sign-in: add a passkey for this device.
   { method: "POST", path: /^passkeys\/options$/ },
   { method: "POST", path: /^passkeys\/verify$/, timeoutMs: 60_000, maxBody: WEBAUTHN_BODY },
