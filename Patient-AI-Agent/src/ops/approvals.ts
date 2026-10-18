@@ -85,6 +85,7 @@ async function target(q: Query, kind: ApprovalKind, targetId: string): Promise<T
         "select version, signed_at from ops.consents where participant_id = $1 order by signed_at desc nulls last limit 1", [participantId]);
       if (c) lines.push(`ICF ${c.version}${c.signed_at ? `, signed ${new Date(c.signed_at).toLocaleDateString("en-US", { timeZone: config.timeZone, month: "short", day: "numeric" })}` : ", not signed"}.`);
       if (typeof t.payload.prescreen === "string") lines.push(`Sage's prescreen: ${t.payload.prescreen.replace(/_/g, " ")}.`);
+      if (kind === "confirm_enrollment") lines.push("Confirming enrolls them and starts their check-ins today.");
     }
   } else if (kind === "activate") {
     participantId = targetId;
@@ -119,7 +120,7 @@ async function identity(q: Query, managerId: string, studyId: string, siteId: st
 export class ApprovalError extends Error {}
 
 const SAGE_FOLLOW_UP: Partial<Record<ApprovalKind, string>> = {
-  confirm_enrollment: "The study team just confirmed their enrollment. Tell them they're enrolled and that the baseline visit comes next. Don't mention any study arm or treatment group.",
+  confirm_enrollment: "The study team approved their enrollment: they're in the study now and their check-ins start today. Welcome them in two short lines, then send their check-in card if a check-in is open now, otherwise their study card. Don't mention any study arm or treatment group.",
   activate: "The study team recorded their baseline visit, so they're now active in the study and their check-ins start today. Welcome them and send their study card.",
   decline_enrollment: "The study team reviewed their screening and won't be enrolling them in this study. Tell them kindly, thank them for their time, and offer to answer questions or look at other studies. Don't guess at reasons.",
 };
@@ -176,7 +177,7 @@ function outcomeText(row: ApprovalRow): string {
   const code = typeof r.participant === "string" ? r.participant : "The participant";
   const sage = r.sage_told ? " Sage is letting them know." : "";
   switch (row.kind) {
-    case "confirm_enrollment": return `${code} is enrolled. Confirmed by ${who}.${sage}`;
+    case "confirm_enrollment": return `${code} is in the study. ${Number(r.assessments_scheduled ?? 0)} check-ins are scheduled for the next two weeks. Confirmed by ${who}.${sage}`;
     case "decline_enrollment": return `${code} won't be enrolled. Recorded as a screen failure by ${who}.${sage}`;
     case "activate": return `${code} is active. ${Number(r.assessments_scheduled ?? 0)} check-ins scheduled for the next two weeks.${sage}`;
     case "review_safety": return `Safety review for ${code} signed off by ${who}. The alert is resolved.`;

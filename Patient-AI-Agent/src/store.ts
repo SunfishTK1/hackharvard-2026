@@ -327,7 +327,7 @@ export async function recentlyCheckedIn(q: Query, engagementId: string, measureC
   return rows.length > 0;
 }
 
-export async function requestEnrollment(q: Query, e: Engagement, visitAt: string): Promise<void> {
+export async function requestEnrollment(q: Query, e: Engagement, visitAt: string | null): Promise<void> {
   await q("select assistant.request_enrollment($1, $2)", [e.id, visitAt]);
 }
 

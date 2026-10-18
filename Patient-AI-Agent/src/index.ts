@@ -5,6 +5,7 @@
 // internal API for other apps such as the ops website.
 import { setTimeout as sleep } from "node:timers/promises";
 import { Assistant } from "./agent/assistant.ts";
+import { CheckInReminders } from "./agent/reminders.ts";
 import { describeError } from "./agent/brain.ts";
 import { SpectrumChannel, type InboundHandler } from "./agent/spectrum.ts";
 import { config } from "./config.ts";
@@ -32,6 +33,8 @@ if (opsAgent) {
   new Notifier(opsAgent).start();
   // When Sage escalates a case, the study's managers hear from Trial Ops right away.
   assistant.journey.onEscalation((x) => void opsAgent.escalated(x).catch((error) => console.error("ops: escalation notice failed", describeError(error))));
+  // When someone signs the informed consent, they get the enrollment decision to confirm with Face ID.
+  assistant.journey.onEnrollmentRequest((x) => void opsAgent.enrollmentRequested(x).catch((error) => console.error("ops: enrollment request failed", describeError(error))));
 }
 const opsLine = opsAgent && config.ops.spectrum.projectId && config.ops.spectrum.projectSecret ? config.ops.spectrum : undefined;
 
@@ -79,6 +82,7 @@ if (projectId && projectSecret) {
   if (!opsLine) opsAgent?.addChannel(spectrum);
   console.log(`spectrum: line routing is ${config.router.mode}${config.router.mode === "ai" ? ` (TypeSafe ${config.router.model})` : ""}`);
   keepRunning("sage", spectrum, line);
+  new CheckInReminders(assistant).start();
 } else {
   console.warn("spectrum: no project configured; serving mini-apps only (use npm run chat to talk to the assistant)");
 }

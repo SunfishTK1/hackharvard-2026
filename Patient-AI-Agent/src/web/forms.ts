@@ -305,9 +305,12 @@ export class Forms {
       // The signature is the legal record; it names them only if they never told Sage what to call them.
       if (!(await store.person(q, form.personId)).displayName) await q("select assistant.set_display_name($1)", [name]);
       await this.assistant.journey.afterSignature(q, e);
+      // Signed: the study team approves the enrollment next (Trial Ops asks them now).
+      await store.requestEnrollment(q, e, null);
       await store.submitForm(q, form, { signedAt: at, method: verification.method });
       return at;
     });
+    if (e.participantId) this.assistant.journey.enrollmentRequested({ participantId: e.participantId, studyId: e.trialId });
     const when = fmtWhen(signedAt, req.trial.timezone);
     // The site investigator hears by email; a failure there never touches the signature.
     void emailInvestigator(form.personId, e.id, req.trial.timezone).catch((error) => console.error("email: investigator not told", (error as Error).message));

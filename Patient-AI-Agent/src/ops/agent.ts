@@ -8,6 +8,7 @@ import { LoopGuard, type ChannelResolver, type Conversation } from "../agent/cha
 import { config } from "../config.ts";
 import type { Thread as SageThread } from "../store.ts";
 import type { AnalysisDone } from "./analyst.ts";
+import { prepare } from "./approvals.ts";
 import type { View } from "./data.ts";
 import { OpsCore, type OpsTurn } from "./core.ts";
 import { ops } from "./db.ts";
@@ -124,13 +125,13 @@ export class OpsAgent {
    * A message Trial Ops starts (a new-alert notice), with its card: kept in the conversation, so
    * the website shows it too, and sent in iMessage when the manager has a chat there.
    */
-  proactive(managerId: string, text: string, link?: { view: View; params: Record<string, string> }): Promise<void> {
+  proactive(managerId: string, text: string, link?: { view: View; params: Record<string, string>; query?: string }): Promise<void> {
     return this.core.serial(managerId, async () => {
       const m = await store.managerById(ops, managerId);
       if (!m) return;
       const thread = await store.ensureThread(ops, m.id);
       await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", body: text });
-      const links = link ? [await this.core.link(m, link.view, link.params)] : [];
+      const links = link ? [await this.core.link(m, link.view, link.params, {}, link.query)] : [];
       for (const l of links) await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", kind: "card", body: l.title, link: { view: l.view, title: l.title, url: l.url } });
       const found = await this.conversationOf(m.id);
       if (found) await this.deliver(found.conversation, found.threadId, { text, links });
@@ -198,6 +199,46 @@ export class OpsAgent {
       await this.proactive(m.id, text, x.kind === "alert" ? { view: "alert", params: { id: x.id } } : undefined);
     }
     if (managers.length) console.log(`ops: told ${managers.length} manager(s) about Sage's escalation (${row.study_code}, ${row.severity})`);
+  }
+
+  /**
+   * Someone signed the informed consent through Sage: each manager linked to that study gets the
+   * enrollment decision right away, prepared and ready to confirm with Face ID. Confirming enrolls
+   * them and starts their check-ins. Claimed in ops.notices, so it goes once per manager.
+   */
+  async enrollmentRequested(request: { participantId: string; studyId: string }): Promise<void> {
+    let task: { id: string; participant_code: string; study_code: string; site_name: string } | undefined;
+    for (let i = 0; i < 30 && !task; i++) {
+      [task] = await ops<{ id: string; participant_code: string; study_code: string; site_name: string }>(
+        `select id, participant_code, study_code, site_name from ops.tasks
+         where participant_id = $1 and action_type = 'confirm_enrollment' and status in ('pending', 'waiting_review')`, [request.participantId]);
+      if (!task) await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!task) return;
+    const [c] = await ops<{ version: string }>("select version from ops.consents where participant_id = $1 and signed_at is not null order by signed_at desc limit 1", [request.participantId]);
+    const managers = await ops<{ id: string }>(
+      `select distinct m.id from ops.managers m join ops.manager_staff ms on ms.manager_id = m.id join ops.staff s on s.staff_user_id = ms.staff_user_id
+       where s.study_id = $1 and m.is_active and s.is_active and m.prefs->>'alerts' <> 'off'`, [request.studyId]);
+    let told = 0;
+    for (const { id } of managers) {
+      const [claimed] = await ops<{ ref: string }>("insert into ops.notices (manager_id, kind, ref) values ($1, 'alert', $2) on conflict do nothing returning ref", [id, `enroll:${task.id}`]);
+      if (!claimed) continue;
+      const m = await store.managerById(ops, id);
+      if (!m) continue;
+      let approval;
+      try {
+        approval = await prepare(m, "confirm_enrollment", task.id, null, "agent");
+      } catch (error) {
+        console.warn("ops: enrollment decision not prepared", describeError(error));
+        continue;
+      }
+      const prescreen = approval.lines.find((l) => l.startsWith("Sage's prescreen")) ?? "";
+      await this.proactive(id,
+        `${task.participant_code} signed the informed consent${c ? ` (ICF ${c.version})` : ""} at ${task.site_name} through Sage. ${prescreen} Approve their enrollment? Confirming with Face ID enrolls them and starts their check-ins today.`.replace(/\s+/g, " "),
+        { view: "approvals", params: {}, query: `approval=${approval.id}` });
+      told += 1;
+    }
+    if (told) console.log(`ops: asked ${told} manager(s) to approve ${task.study_code}'s new enrollment`);
   }
 
   /** The morning briefing: a turn written for the day, with the portfolio card. */

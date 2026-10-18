@@ -145,6 +145,16 @@ export class Journey {
   }
 
   private readonly escalationListeners: ((escalation: Escalation) => void)[] = [];
+  private readonly enrollmentListeners: ((request: { participantId: string; studyId: string }) => void)[] = [];
+
+  /** Called once a signed consent has asked the study team to approve the enrollment (after it commits). */
+  onEnrollmentRequest(listener: (request: { participantId: string; studyId: string }) => void): void {
+    this.enrollmentListeners.push(listener);
+  }
+
+  enrollmentRequested(request: { participantId: string; studyId: string }): void {
+    for (const listener of this.enrollmentListeners) listener(request);
+  }
 
   /**
    * Called for every new escalation, from inside the transaction that raises it (so the row may not
