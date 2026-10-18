@@ -12,11 +12,16 @@ services:
       PUBLIC_URL: https://ops.hackharvard2026.velroi.com
       TRIAL_OPS_API_URL: http://patient-assistant:3012
     mem_limit: 160m
+    volumes:
+      - uploads:/app/uploads
     networks:
       default:
       web:
         aliases: [ops-home]
       clinical-db_default:
+
+volumes:
+  uploads:
 
 networks:
   web:

@@ -3,6 +3,7 @@ import Alerts from "./pages/Alerts";
 import Calendar from "./pages/Calendar";
 import Journeys from "./pages/Journeys";
 import Participant from "./pages/Participant";
+import { SiteSetup, StudySetup } from "./pages/Setup";
 import Site from "./pages/Site";
 import StudiesPage from "./pages/Studies";
 import Study from "./pages/Study";
@@ -402,6 +403,8 @@ function route(path: string) {
   if (path === "/alerts") return <Alerts />;
   if (path === "/journeys") return <Journeys />;
   if (path === "/calendar") return <Calendar />;
+  if (path === "/setup/study") return <StudySetup />;
+  if (path === "/setup/sites") return <SiteSetup key={location.search} />;
   // Reported data now lives on the participant page; older links still land there.
   if (code(/^\/reported\/([^/]+)$/)) return <Redirect to={`/participants/${encodeURIComponent(code(/^\/reported\/([^/]+)$/)!)}`} />;
   if (path === "/reported") return <Redirect to="/studies" />;

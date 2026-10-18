@@ -1,0 +1,3 @@
+site_id,study_id,institution,city,state,principal_investigator,coordinator,site_status,local_icf_version
+SITE-007-A,STUDY-007,Charles River Arthritis Clinic,Boston,MA,Dr. Sofia Marin,Jamie Fox,Active,1.2-BOS
+SITE-007-B,STUDY-007,Connecticut Valley Rheumatology,Hartford,CT,Dr. Kenji Watanabe,Rosa Diaz,Active,1.2-HAR

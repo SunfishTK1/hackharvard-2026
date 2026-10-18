@@ -1,0 +1,360 @@
+{
+  "warning": "All data and documents are synthetic.",
+  "studies": [
+    {
+      "study_id": "STUDY-006",
+      "protocol_id": "RSP220-305",
+      "title": "A Phase III Study of RSP-220 Inhaler in Adults With Moderate Persistent Asthma",
+      "condition": "Moderate Persistent Asthma",
+      "phase": "Phase 3",
+      "design": "Randomized, double-blind, placebo-controlled, parallel-group",
+      "target_enrollment": 210,
+      "duration_weeks": 16,
+      "arms": [
+        "RSP-220 200 mcg inhaled twice daily",
+        "Placebo inhaler twice daily"
+      ],
+      "intervention": "RSP-220",
+      "protocol_version": "2.3",
+      "icf_version": "1.4",
+      "soa_version": "1.1",
+      "epro_version": "1.2",
+      "inclusion": [
+        "Age 18-70 years",
+        "Physician-diagnosed asthma for at least 12 months",
+        "Pre-bronchodilator FEV1 50%-85% of predicted at screening",
+        "Able to use a connected peak-flow meter"
+      ],
+      "exclusion": [
+        "Current smoker or smoking history of 10 pack-years or more",
+        "Asthma exacerbation requiring hospitalization within 3 months",
+        "Pregnancy"
+      ],
+      "primary": "Change from baseline in pre-bronchodilator FEV1 at Week 16",
+      "measures": [
+        [
+          "Asthma symptom score",
+          "0-10",
+          "Daily",
+          "Patient message"
+        ],
+        [
+          "Study inhaler used",
+          "Yes/No",
+          "Twice daily",
+          "Patient message"
+        ],
+        [
+          "Rescue inhaler puffs",
+          "Count",
+          "Daily",
+          "Patient message"
+        ],
+        [
+          "Peak expiratory flow",
+          "L/min",
+          "Twice daily",
+          "Connected device"
+        ],
+        [
+          "Spirometry FEV1",
+          "L",
+          "Weeks 0,4,8,16",
+          "Site visit"
+        ]
+      ],
+      "risks": [
+        "throat irritation",
+        "hoarseness",
+        "headache",
+        "oral thrush",
+        "unknown risks typical of an investigational product"
+      ],
+      "sponsor": "Northwind Respiratory (synthetic)",
+      "visits": [
+        "Screening",
+        "Baseline",
+        "Week 2",
+        "Week 4",
+        "Week 8",
+        "Week 12",
+        "Week 16"
+      ]
+    },
+    {
+      "study_id": "STUDY-007",
+      "protocol_id": "RA315-204",
+      "title": "A Phase II Study of RA-315 in Adults With Active Rheumatoid Arthritis",
+      "condition": "Rheumatoid Arthritis",
+      "phase": "Phase 2",
+      "design": "Randomized, double-blind, placebo-controlled",
+      "target_enrollment": 120,
+      "duration_weeks": 12,
+      "arms": [
+        "RA-315 100 mg subcutaneous once weekly",
+        "Placebo subcutaneous once weekly"
+      ],
+      "intervention": "RA-315",
+      "protocol_version": "1.6",
+      "icf_version": "1.2",
+      "soa_version": "1.0",
+      "epro_version": "1.1",
+      "inclusion": [
+        "Age 18 years or older",
+        "Rheumatoid arthritis diagnosis for at least 6 months",
+        "At least 6 swollen joints at screening",
+        "Stable methotrexate dose for 8 weeks"
+      ],
+      "exclusion": [
+        "Active or latent tuberculosis",
+        "Prior treatment with a biologic in the same class",
+        "Pregnancy"
+      ],
+      "primary": "Proportion of participants achieving ACR20 response at Week 12",
+      "measures": [
+        [
+          "Joint pain severity",
+          "0-10",
+          "Daily",
+          "Patient message"
+        ],
+        [
+          "Morning stiffness duration",
+          "Minutes",
+          "Daily",
+          "Patient message"
+        ],
+        [
+          "Weekly injection given",
+          "Yes/No",
+          "Weekly",
+          "Patient message"
+        ],
+        [
+          "Injection site reaction",
+          "Yes/No",
+          "Weekly",
+          "Patient questionnaire"
+        ],
+        [
+          "C-reactive protein",
+          "mg/L",
+          "Weeks 0,4,8,12",
+          "Site laboratory"
+        ]
+      ],
+      "risks": [
+        "injection site reactions",
+        "upper respiratory infections",
+        "headache",
+        "unknown risks typical of an investigational product"
+      ],
+      "sponsor": "Calder Immunology (synthetic)",
+      "visits": [
+        "Screening",
+        "Baseline",
+        "Week 2",
+        "Week 4",
+        "Week 8",
+        "Week 12"
+      ]
+    },
+    {
+      "study_id": "STUDY-008",
+      "protocol_id": "HFC-RM-02",
+      "title": "Remote Monitoring After Heart Failure Hospitalization With the HF-Connect Program",
+      "condition": "Heart Failure",
+      "phase": "Not Applicable",
+      "design": "Randomized, open-label, remote device-enabled study",
+      "target_enrollment": 160,
+      "duration_weeks": 12,
+      "arms": [
+        "HF-Connect remote monitoring",
+        "Standard discharge follow-up"
+      ],
+      "intervention": "HF-Connect",
+      "protocol_version": "1.0",
+      "icf_version": "1.0",
+      "soa_version": "1.0",
+      "epro_version": "1.0",
+      "inclusion": [
+        "Age 40-85 years",
+        "Hospitalized for heart failure within the past 14 days",
+        "Home internet or cellular access",
+        "Able to stand on the study scale"
+      ],
+      "exclusion": [
+        "Planned cardiac surgery within 12 weeks",
+        "Enrolled in hospice care"
+      ],
+      "primary": "Heart failure readmission or emergency visit by Week 12",
+      "measures": [
+        [
+          "Body weight",
+          "kg",
+          "Daily",
+          "Connected device"
+        ],
+        [
+          "Shortness of breath at rest",
+          "Yes/No",
+          "Daily",
+          "Patient message"
+        ],
+        [
+          "Ankle swelling",
+          "0-10",
+          "Daily",
+          "Patient message"
+        ],
+        [
+          "Daily steps",
+          "Count",
+          "Daily",
+          "Connected device"
+        ],
+        [
+          "NT-proBNP",
+          "pg/mL",
+          "Weeks 0,6,12",
+          "Site laboratory"
+        ]
+      ],
+      "risks": [
+        "inconvenience of daily measurements",
+        "privacy risks related to remote monitoring",
+        "possible anxiety from repeated measurements"
+      ],
+      "sponsor": "Harborline Cardiology Network (synthetic)",
+      "visits": [
+        "Screening",
+        "Baseline",
+        "Week 2",
+        "Week 6",
+        "Week 12"
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "site_id": "SITE-006-A",
+      "study_id": "STUDY-006",
+      "institution": "Bayview Pulmonary Research Unit",
+      "address": "220 Longwood Ave",
+      "city": "Boston",
+      "state": "MA",
+      "tz": "America/New_York",
+      "pi": "Dr. Hannah Okafor",
+      "coordinator": "Marcus Bell",
+      "status": "Active",
+      "icf": "1.4-BOS",
+      "email": "marcus.bell@example.org",
+      "phone": "+1-617-555-2061"
+    },
+    {
+      "site_id": "SITE-006-B",
+      "study_id": "STUDY-006",
+      "institution": "Granite State Lung Center",
+      "address": "41 Elm St",
+      "city": "Manchester",
+      "state": "NH",
+      "tz": "America/New_York",
+      "pi": "Dr. Paul Delgado",
+      "coordinator": "Ivy Thompson",
+      "status": "Active",
+      "icf": "1.4-MAN",
+      "email": "ivy.thompson@example.org",
+      "phone": "+1-617-555-2062"
+    },
+    {
+      "site_id": "SITE-007-A",
+      "study_id": "STUDY-007",
+      "institution": "Charles River Arthritis Clinic",
+      "address": "88 Cambridge St",
+      "city": "Boston",
+      "state": "MA",
+      "tz": "America/New_York",
+      "pi": "Dr. Sofia Marin",
+      "coordinator": "Jamie Fox",
+      "status": "Active",
+      "icf": "1.2-BOS",
+      "email": "jamie.fox@example.org",
+      "phone": "+1-617-555-2071"
+    },
+    {
+      "site_id": "SITE-007-B",
+      "study_id": "STUDY-007",
+      "institution": "Connecticut Valley Rheumatology",
+      "address": "15 Asylum St",
+      "city": "Hartford",
+      "state": "CT",
+      "tz": "America/New_York",
+      "pi": "Dr. Kenji Watanabe",
+      "coordinator": "Rosa Diaz",
+      "status": "Active",
+      "icf": "1.2-HAR",
+      "email": "rosa.diaz@example.org",
+      "phone": "+1-617-555-2072"
+    },
+    {
+      "site_id": "SITE-008-A",
+      "study_id": "STUDY-008",
+      "institution": "Beacon Heart Failure Program",
+      "address": "300 Fruit St",
+      "city": "Boston",
+      "state": "MA",
+      "tz": "America/New_York",
+      "pi": "Dr. Grace Liu",
+      "coordinator": "Tom Becker",
+      "status": "Active",
+      "icf": "1.0-BOS",
+      "email": "tom.becker@example.org",
+      "phone": "+1-617-555-2081"
+    },
+    {
+      "site_id": "SITE-008-B",
+      "study_id": "STUDY-008",
+      "institution": "Narragansett Cardiology Associates",
+      "address": "9 Point St",
+      "city": "Providence",
+      "state": "RI",
+      "tz": "America/New_York",
+      "pi": "Dr. Omar Haddad",
+      "coordinator": "Kira Novak",
+      "status": "Active",
+      "icf": "1.0-PRO",
+      "email": "kira.novak@example.org",
+      "phone": "+1-617-555-2082"
+    },
+    {
+      "site_id": "SITE-008-C",
+      "study_id": "STUDY-008",
+      "institution": "Pioneer Valley Heart Institute",
+      "address": "759 Chestnut St",
+      "city": "Springfield",
+      "state": "MA",
+      "tz": "America/New_York",
+      "pi": "Dr. Ellen Brooks",
+      "coordinator": "Dev Malhotra",
+      "status": "Setup",
+      "icf": "1.0-SPR",
+      "email": "dev.malhotra@example.org",
+      "phone": "+1-617-555-2083"
+    },
+    {
+      "site_id": "SITE-005-C",
+      "study_id": "STUDY-005",
+      "institution": "Seacoast Hypertension Research",
+      "address": "55 Pleasant St",
+      "city": "Portsmouth",
+      "state": "NH",
+      "tz": "America/New_York",
+      "pi": "Dr. Ruth Alvarez",
+      "coordinator": "Ben Carter",
+      "status": "Active",
+      "icf": "1.0-POR",
+      "email": "ben.carter@example.org",
+      "phone": "+1-617-555-2053"
+    }
+  ]
+}

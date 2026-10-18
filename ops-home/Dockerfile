@@ -12,7 +12,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
-COPY server.ts home.ts pages.ts redact.ts agent-proxy.ts ./
+COPY server.ts home.ts pages.ts redact.ts agent-proxy.ts setup.ts pdf.ts ./
+# Uploaded study and site documents, kept on a volume (compose.yaml).
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
 COPY src/types.ts ./src/types.ts
 USER node
 CMD ["node", "server.ts"]

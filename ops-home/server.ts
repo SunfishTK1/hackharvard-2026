@@ -7,6 +7,7 @@ import pg from "pg";
 import { loadHome, type Queryable } from "./home.ts";
 import { agentProxy } from "./agent-proxy.ts";
 import { loadRedactor } from "./redact.ts";
+import { setupApi } from "./setup.ts";
 import { loadAlerts, loadCalendar, loadJourneys, loadParticipant, loadPriorities, loadReported, loadSite, loadStudies, loadStudy } from "./pages.ts";
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -35,6 +36,9 @@ pool?.on("error", (err) => console.error("pg pool error:", err.message));
 
 // Agentic mode: /api/agent/* goes to the Trial Ops API, server to server (see agent-proxy.ts).
 const agent = agentProxy(env);
+
+// Study and site setup: the only writes, and only for a signed-in manager (see setup.ts).
+const setup = setupApi(env, pool, DIST_DIR, () => cache.clear());
 
 const cache = new Map<string, { at: number; body: string }>();
 const inFlight = new Map<string, Promise<string>>();
@@ -102,6 +106,8 @@ const MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
+  ".pdf": "application/pdf",
+  ".csv": "text/csv; charset=utf-8",
 };
 
 const server = createServer(async (req, res) => {
@@ -109,6 +115,7 @@ const server = createServer(async (req, res) => {
   const search = (req.url ?? "").includes("?") ? (req.url ?? "").slice((req.url ?? "").indexOf("?")) : "";
 
   if (await agent(req, res, urlPath, search)) return;
+  if (await setup(req, res, urlPath)) return;
 
   if (urlPath === "/healthz") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -145,7 +152,8 @@ const server = createServer(async (req, res) => {
     const ext = extname(filePath);
     res.writeHead(200, {
       "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
-      "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
+      // Built assets have hashed names; sample documents and pages don't.
+      "Cache-Control": ext === ".html" || urlPath.startsWith("/samples/") ? "no-cache" : "public, max-age=31536000, immutable",
     });
     res.end(content);
   } catch {

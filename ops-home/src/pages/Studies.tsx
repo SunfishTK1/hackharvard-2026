@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { StudiesData, StudyCard } from "../types";
-import { BLUE, Footer, INK, LifecycleBar, LifecycleLegend, MUTED, PANEL, Source, Stale, Status, chip, useApi, useSources } from "../ui";
+import { BLUE, Footer, INK, LifecycleBar, LifecycleLegend, MUTED, PANEL, Source, Stale, Status, chip, pillLink, useApi, useSources } from "../ui";
 
 const FILTERS: Array<[string, (s: StudyCard) => boolean]> = [
   ["All", () => true],
@@ -48,7 +48,13 @@ export default function Studies() {
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise page-head">
         <div style={{ fontSize: 17, fontWeight: 600, color: MUTED }}>Portfolio</div>
-        <h1 className="page-title">Studies</h1>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
+          <h1 className="page-title">Studies</h1>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, paddingBottom: 8 }}>
+            <a href="/setup/study" style={pillLink(true)}>Set up a study</a>
+            <a href="/setup/sites" style={pillLink(false)}>Add sites</a>
+          </div>
+        </div>
         <p className="page-lede">{data.summary}</p>
         <Source show={showSources}>public.studies ⋈ sites ⋈ participants ⋈ alerts ⋈ workflow_tasks · completion from analytics.participant_measurements</Source>
 

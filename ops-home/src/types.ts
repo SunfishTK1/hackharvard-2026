@@ -474,3 +474,149 @@ export interface CalendarData {
   /** False when the patient assistant's booking table isn't in this database. */
   bookingsAvailable: boolean;
 }
+
+// Study and site setup (setup.ts). A draft comes from the uploaded documents; the person
+// reviews and edits it, then the server checks it against the database and creates it.
+
+export type DocumentKind = "protocol" | "icf" | "schedule_of_activities" | "epro" | "site_roster" | "site_info" | "site_icf" | "unknown";
+
+/** One uploaded file, sent as base64 so the server can hash and keep the original. */
+export interface UploadFile {
+  name: string;
+  data: string;
+}
+
+export interface ParsedFile {
+  name: string;
+  kind: DocumentKind;
+  /** e.g. "Protocol", "Site information sheet" */
+  label: string;
+  version: string | null;
+  sha256: string;
+  bytes: number;
+  studyCode: string | null;
+  siteCodes: string[];
+  synthetic: boolean;
+  /** What the parser read, before anyone edited it; stored as the extraction. */
+  extracted: Record<string, unknown>;
+  notes: string[];
+}
+
+export type MeasureType = "numeric" | "integer" | "boolean" | "text" | "choice" | "json";
+export type ScheduleFrequency = "once" | "daily" | "weekly" | "custom_days";
+
+export interface DraftMeasure {
+  fieldId: string;
+  code: string;
+  label: string;
+  prompt: string;
+  responseType: string;
+  frequencyText: string;
+  sourceText: string;
+  dataType: MeasureType;
+  unit: string;
+  min: number | null;
+  max: number | null;
+  choices: string[];
+  sourceType: string;
+  frequency: ScheduleFrequency;
+  times: string[];
+  weekdays: number[];
+  studyDays: number[];
+  graceMinutes: number;
+}
+
+export interface DraftArm {
+  code: string;
+  name: string;
+  intervention: string;
+  dose: string;
+  frequency: string;
+  control: boolean;
+}
+
+export interface DraftRule {
+  code: string;
+  name: string;
+  type: "consent_overdue" | "missing_assessments" | "value_threshold" | "safety_review";
+  measureCode: string | null;
+  condition: Record<string, unknown>;
+  severity: "low" | "medium" | "high" | "critical";
+  action: "remind" | "notify_staff" | "require_review";
+  enabled: boolean;
+  why: string;
+}
+
+export interface StudyDraft {
+  code: string;
+  title: string;
+  protocolId: string;
+  protocolVersion: string;
+  sponsor: string;
+  phase: string;
+  condition: string;
+  design: string;
+  intervention: string;
+  targetEnrollment: number | null;
+  durationWeeks: number | null;
+  primaryOutcome: string;
+  icfVersion: string;
+  soaVersion: string;
+  eproVersion: string;
+  arms: DraftArm[];
+  inclusion: string[];
+  exclusion: string[];
+  visits: string[];
+  activities: { name: string; visits: string[] }[];
+  measures: DraftMeasure[];
+  risks: string[];
+  rules: DraftRule[];
+  managerName: string;
+  managerEmail: string;
+  activate: boolean;
+}
+
+export interface SiteDraft {
+  code: string;
+  institution: string;
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  timeZone: string;
+  status: "setup" | "active" | "paused" | "closed";
+  pi: string;
+  coordinator: string;
+  coordinatorEmail: string;
+  coordinatorPhone: string;
+  localIcfVersion: string;
+  /** Uploaded files (by name) that belong to this site. */
+  infoFile: string | null;
+  icfFile: string | null;
+}
+
+export interface SetupContext {
+  signedIn: boolean;
+  actor: string | null;
+  studies: { code: string; title: string; status: string; sites: string[]; icfVersion: string | null; manager: string | null }[];
+  staff: string[];
+  samples: { study: string; title: string; files: string[]; siteFiles: string[] }[];
+}
+
+export interface ParseResult {
+  files: ParsedFile[];
+  study: StudyDraft | null;
+  studyCode: string | null;
+  sites: SiteDraft[];
+  warnings: string[];
+}
+
+export interface SetupOutcome {
+  ok: true;
+  dryRun: boolean;
+  code: string;
+  href: string;
+  /** Plain-language list of what was (or would be) created. */
+  created: string[];
+  warnings: string[];
+}
