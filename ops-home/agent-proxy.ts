@@ -3,12 +3,14 @@
 // and the manager's session, which lives in an HttpOnly cookie, so page scripts never see either.
 // Sign-in is a link Trial Ops texts to a linked manager's phone.
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
 
 const COOKIE = "ops_session";
 const WEEK_SECONDS = 7 * 24 * 3600;
 const MAX_BODY = 16 * 1024;
 const CHAT_TIMEOUT_MS = 90_000;
 const TIMEOUT_MS = 15_000;
+const FILE_TIMEOUT_MS = 60_000;
 const SIGN_IN_LIMIT = 5; // per IP per 10 minutes
 const sentSignIns = new Map<string, number[]>();
 
@@ -117,6 +119,32 @@ export function agentProxy(env: Env) {
     return { status: res.status, body };
   }
 
+  /** Streams a report file (a chart, a CSV) through, with the upstream's type and disposition. */
+  async function file(res: ServerResponse, path: string, session: string, clear: Record<string, string>): Promise<void> {
+    let up: Response;
+    try {
+      up = await fetch(`${base}${path}`, {
+        headers: { Authorization: `Bearer ${token}`, "X-Ops-Session": session },
+        signal: AbortSignal.timeout(FILE_TIMEOUT_MS),
+      });
+    } catch (err) {
+      console.error("agent proxy: file", path, err instanceof Error ? err.message : err);
+      throw new HttpError(502, "Trial Ops is unreachable right now.");
+    }
+    if (!up.ok || !up.body) {
+      const body = await up.json().catch(() => ({ error: `Trial Ops answered ${up.status}.` }));
+      send(res, up.status, body, up.status === 401 ? clear : {});
+      return;
+    }
+    const headers: Record<string, string> = { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
+    for (const name of ["content-type", "content-disposition", "content-length"]) {
+      const value = up.headers.get(name);
+      if (value) headers[name] = value;
+    }
+    res.writeHead(200, headers);
+    Readable.fromWeb(up.body as import("node:stream/web").ReadableStream).pipe(res);
+  }
+
   /** Handles /api/agent/*. Returns false for any other path. */
   return async function handle(req: IncomingMessage, res: ServerResponse, urlPath: string, search: string): Promise<boolean> {
     if (!urlPath.startsWith("/api/agent/")) return false;
@@ -166,11 +194,18 @@ export function agentProxy(env: Env) {
       else if (method === "GET" && route === "analyses") target = { method, path: "/v1/analyses" };
       else if (method === "POST" && route === "analyses") target = { method, path: "/v1/analyses", body: true };
       else if (method === "GET" && /^analyses\/[0-9a-f-]{36}$/i.test(route)) target = { method, path: `/v1/${route}` };
-      if (!target) throw new HttpError(404, "Not found.");
+      else if (method === "POST" && /^analyses\/[0-9a-f-]{36}\/cancel$/i.test(route)) target = { method, path: `/v1/${route}`, body: true };
+      const reportFile = method === "GET" && /^analyses\/[0-9a-f-]{36}\/files\/[A-Za-z0-9._-]{1,120}$/i.test(route);
+      if (!target && !reportFile) throw new HttpError(404, "Not found.");
       if (!session) {
         send(res, 401, { error: "Sign in to use Agentic mode." });
         return true;
       }
+      if (reportFile) {
+        await file(res, `/v1/${route}`, session, clear);
+        return true;
+      }
+      if (!target) throw new HttpError(404, "Not found.");
       const r = await upstream(target.method, target.path, { session, timeoutMs: target.timeoutMs, body: target.body ? await readBody(req) : undefined });
       send(res, r.status, r.body, r.status === 401 ? clear : {});
     } catch (err) {

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { Agentic } from "./Agentic";
 import type { BlindSpot, Change, HomeData, PipelinePoint, StudyRow, WaitingGroup, WaitingPerson } from "./types";
 
-const AGENTIC_URL = "https://trial-manager.hackharvard2026.velroi.com";
+type Mode = "classic" | "agentic";
+const modeFromUrl = (): Mode => (new URLSearchParams(location.search).get("mode") === "agentic" ? "agentic" : "classic");
 const REFRESH_MS = 5 * 60_000;
 
 const INK = "#1D1D1F";
@@ -22,30 +24,45 @@ function Source({ show, children, style }: { show: boolean; children: ReactNode;
   return show ? <div style={{ ...s.source, ...style }}>{children}</div> : null;
 }
 
-function Header() {
+function Header({ mode, onMode, account, onSignOut }: { mode: Mode; onMode: (m: Mode) => void; account: string | null; onSignOut: () => void }) {
   const link: CSSProperties = { display: "flex", alignItems: "center", minHeight: 48, color: INK, textDecoration: "none" };
   const nav: Array<[string, string | null]> = [
     ["Studies", "#studies"], ["Journeys", "#pipeline"], ["Reported data", "#blind-spots"],
     ["Alerts", "#waiting"], ["Messages", null], ["Documents", null],
   ];
+  // Both modes live on this page: the toggle switches in place and keeps ?mode= in the address.
+  const go = (m: Mode) => (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    onMode(m);
+  };
   return (
     <header className="topbar">
       <nav aria-label="Primary" className="topnav">
-        <a href="#top" aria-current="page" className="brand">
+        <a href={mode === "classic" ? "#top" : "?mode=agentic"} aria-current="page" className="brand">
           <span aria-hidden="true" className="brand-mark" />Trial Ops
         </a>
-        <div className="topnav-links">
-          {nav.map(([label, href]) =>
-            href ? (
-              <a key={label} href={href} style={link}>{label}</a>
-            ) : (
-              <span key={label} style={{ ...link, color: "rgba(0,0,0,0.32)" }} title="Coming soon">{label}</span>
-            ),
-          )}
-        </div>
+        {mode === "classic" ? (
+          <div className="topnav-links">
+            {nav.map(([label, href]) =>
+              href ? (
+                <a key={label} href={href} style={link}>{label}</a>
+              ) : (
+                <span key={label} style={{ ...link, color: "rgba(0,0,0,0.32)" }} title="Coming soon">{label}</span>
+              ),
+            )}
+          </div>
+        ) : account ? (
+          <div className="account">
+            <span>Signed in as <span style={{ color: INK, fontWeight: 600 }}>{account}</span></span>
+            <button type="button" className="link-button" onClick={onSignOut}>Sign out</button>
+          </div>
+        ) : (
+          <div className="topnav-spacer" />
+        )}
         <div role="group" aria-label="Mode" className="mode-toggle">
-          <a href="#top" aria-current="page" className="mode-on">Classic</a>
-          <a href={AGENTIC_URL} className="mode-off">Agentic</a>
+          <a href="?" onClick={go("classic")} aria-current={mode === "classic" ? "page" : undefined} className={mode === "classic" ? "mode-on" : "mode-off"}>Classic</a>
+          <a href="?mode=agentic" onClick={go("agentic")} aria-current={mode === "agentic" ? "page" : undefined} className={mode === "agentic" ? "mode-on" : "mode-off"}>Agentic</a>
         </div>
       </nav>
     </header>
@@ -380,6 +397,9 @@ function Footer({ data, showSources, onToggleSources }: { data: HomeData; showSo
 }
 
 export default function App() {
+  const [mode, setMode] = useState<Mode>(modeFromUrl);
+  const [account, setAccount] = useState<string | null>(null);
+  const [session, setSession] = useState(0);
   const [data, setData] = useState<HomeData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSources, setShowSources] = useState(() => new URLSearchParams(location.search).has("sources"));
@@ -397,6 +417,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (mode !== "classic") return;
     load();
     const timer = setInterval(load, REFRESH_MS);
     const onFocus = () => document.visibilityState === "visible" && load();
@@ -405,7 +426,28 @@ export default function App() {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [load]);
+  }, [load, mode]);
+
+  const switchMode = (next: Mode) => {
+    const url = new URL(location.href);
+    if (next === "agentic") url.searchParams.set("mode", "agentic");
+    else url.searchParams.delete("mode");
+    url.hash = "";
+    history.replaceState(null, "", url);
+    setMode(next);
+    window.scrollTo({ top: 0 });
+  };
+  useEffect(() => {
+    const onPop = () => setMode(modeFromUrl());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const signOut = async () => {
+    await fetch("/api/agent/sign-out", { method: "POST" }).catch(() => undefined);
+    setAccount(null);
+    setSession((n) => n + 1);
+  };
 
   const toggleSources = () => {
     const next = !showSources;
@@ -416,9 +458,20 @@ export default function App() {
     history.replaceState(null, "", url);
   };
 
+  if (mode === "agentic") {
+    return (
+      <>
+        <Header mode={mode} onMode={switchMode} account={account} onSignOut={signOut} />
+        <main>
+          <Agentic key={session} onAccount={setAccount} />
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
-      <Header />
+      <Header mode={mode} onMode={switchMode} account={account} onSignOut={signOut} />
       {!data ? (
         <div className="status" role="status">
           {error ? (

@@ -1,6 +1,6 @@
 # ops-home
 
-The trial manager's **portfolio home** (the "Classic" view): one page that says what changed since yesterday, who has the next move, whether enrollment is slowing, what no alert rule caught, and how each study is doing. It is the Claude Design draft "Clinical Trial Ops – Portfolio home", wired to the live `clinical_trials` database. The "Agentic" toggle links to the [trial manager view](https://trial-manager.hackharvard2026.velroi.com).
+The trial manager's **portfolio home** (the "Classic" view): one page that says what changed since yesterday, who has the next move, whether enrollment is slowing, what no alert rule caught, and how each study is doing. It is the Claude Design draft "Clinical Trial Ops – Portfolio home", wired to the live `clinical_trials` database. The "Agentic" toggle switches the same page to **Agentic mode**, a conversation with Trial Ops (below).
 
 Address once deployed: https://ops.hackharvard2026.velroi.com
 
@@ -19,6 +19,16 @@ Address once deployed: https://ops.hackharvard2026.velroi.com
 | Study health | `studies`, `participants`, `has_current_consent()`, `alerts`, `workflow_tasks`, trial manager from `study_staff` |
 
 Dates and "yesterday" use `America/New_York` (`DISPLAY_TZ`).
+
+## Agentic mode
+
+`?mode=agentic` (or the toggle, which switches in place) turns the page into a conversation with **Trial Ops**, the trial managers' agent from `Patient-AI-Agent/src/ops`. It is the same agent, and the same conversation, as Trial Ops in iMessage: one memory, the same tools, and the same views. Decisions, alerts, studies, participants and analyses are Trial Ops mini-apps, opened in a side panel (a sheet on phones). Decisions open in a new tab, because confirming one takes Face ID in a page of its own. Analyses running on a manager's Daytona computer show as live rows (phase, a four-step stepper, elapsed time), and the full status screen opens in the panel. It's the same screen iMessage opens.
+
+- Sign-in: the manager enters their phone number and Trial Ops texts a one-time link to it, but only to phones an administrator linked (`npm run ops:link` in Patient-AI-Agent). The link lands on `?mode=agentic&signin=…`, and the session is then kept in an `HttpOnly`, `SameSite=Lax` cookie for 7 days.
+- `agent-proxy.ts`: the browser only calls this site under `/api/agent/*` (sign-in, session, sign-out, me, messages, chat, views, link, analyses, cancel, report files). The server calls the Trial Ops API (`TRIAL_OPS_API_URL`, default `http://patient-assistant:3012` on the `web` network) with `TRIAL_OPS_API_TOKEN` and the session, so neither reaches page scripts. Cross-site POSTs are refused, and sign-in links are limited to 5 per IP every 10 minutes. Texted links use `PUBLIC_URL`, so a forged Host header can't redirect them.
+- `src/Agentic.tsx` and `src/agentic.css`: the workspace. While the tab is visible it polls for new messages every 5 s, because Trial Ops also writes on its own: a finished analysis, or a Face ID link. Analyses are polled every 5 s while one is running, otherwise every 30 s.
+
+Without `TRIAL_OPS_API_TOKEN`, Agentic mode says it isn't connected yet and Classic works as before.
 
 ## Database access
 
@@ -45,6 +55,7 @@ npm run dev      # terminal 2, Vite on :5173, proxies /api
 ```sh
 # once, on the server: /opt/apps/ops-home/.env (chmod 600) with
 #   DATABASE_URL=postgres://developer:<password>@clinical-db-postgres-1:5432/clinical_trials
+#   TRIAL_OPS_API_TOKEN=<the Trial Ops API token, the same value Patient-AI-Agent expects in /opt/apps/patient-assistant/.env>
 server/deploy.sh ops-home
 ```
 
