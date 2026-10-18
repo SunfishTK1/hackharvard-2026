@@ -47,7 +47,16 @@ a.icon-button:hover { color: #0066CC; background: rgba(0,0,0,0.04); }
   max-width: 980px; margin: 0 auto; padding: 104px 24px 72px; text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 18px;
 }
-.hero-title { margin: 0; font-size: 76px; line-height: 1.03; font-weight: 600; letter-spacing: -0.025em; }
+.hero-title { margin: 0; font-size: 64px; line-height: 1.06; font-weight: 600; letter-spacing: -0.025em; text-wrap: balance; }
+/* The hero summary: one labelled line per fact. */
+.hero-points {
+  margin: 4px 0 0; width: 100%; max-width: 760px; padding: 6px 24px; border-radius: 24px; background: #F5F5F7;
+  text-align: left; display: flex; flex-direction: column;
+}
+.hero-point { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; padding: 12px 0; font-size: 16px; line-height: 1.45; }
+.hero-point + .hero-point { border-top: 1px solid rgba(0,0,0,0.06); }
+.hero-point dt { font-weight: 600; color: #1D1D1F; }
+.hero-point dd { margin: 0; color: rgba(0,0,0,0.64); }
 .hero-body { margin: 0; max-width: 680px; font-size: 21px; line-height: 1.38; color: rgba(0,0,0,0.56); }
 .pill {
   display: inline-flex; align-items: center; min-height: 44px; padding: 0 24px; border: 0; border-radius: 980px;
@@ -195,7 +204,8 @@ a.row:hover { color: #1D1D1F; }
   .subnav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .subnav > * { white-space: nowrap; }
   .hero { padding: 64px 16px 48px; }
-  .hero-title { font-size: 44px; }
+  .hero-title { font-size: 40px; }
+  .hero-point { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .hero-body { font-size: 18px; }
   .change-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .change-row > :last-child { justify-self: start; margin-top: 4px; }

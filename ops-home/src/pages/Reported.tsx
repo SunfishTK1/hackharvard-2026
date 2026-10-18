@@ -1,6 +1,15 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import type { DayItem, ReportedData, ReportedSlot } from "../types";
-import { BLUE, Footer, INK, MUTED, PANEL, Source, Stale, Status, useApi, useSources } from "../ui";
+import { BLUE, Crumbs, Footer, ParticipantTabs, StudyTabs, INK, MUTED, PANEL, Source, Stale, Status, useApi, useSources } from "../ui";
+
+/** Moves to another participant's data the same way a link would. */
+function goTo(code: string) {
+  const url = new URL(`/reported/${encodeURIComponent(code)}`, location.href);
+  if (new URLSearchParams(location.search).has("sources")) url.searchParams.set("sources", "");
+  history.pushState(null, "", url);
+  dispatchEvent(new PopStateEvent("popstate"));
+  scrollTo({ top: 0 });
+}
 
 const WINDOW = 14;
 const STATUS_STYLE: Record<DayItem["statusKind"], CSSProperties> = {
@@ -71,12 +80,29 @@ export default function Reported({ code }: { code: string | null }) {
 
   return (
     <main>
+      {data.nav && data.siteHref && <StudyTabs nav={data.nav} current={data.siteHref} />}
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise page-head" style={{ padding: "72px 24px 28px" }}>
-        <h1 className="page-title">Reported data</h1>
+        <Crumbs items={data.crumbs} />
+        {p && <ParticipantTabs code={p.code} current="reported" />}
+        <h1 className="page-title">Reported data{p ? <span style={{ color: MUTED }}> · {p.code}</span> : null}</h1>
         <p className="page-lede" style={{ maxWidth: 760 }}>Each scheduled question and reading for one participant, as it was reported. Select a day to see the messages exchanged, how each reply was interpreted, and any alerts it raised.</p>
         <Source show={showSources}>grid: analytics.participant_measurements (one row per expected answer) · day detail: public.messages + public.observations (raw_value, parser_confidence, supersedes_observation_id) + public.alerts</Source>
-        <div role="group" aria-label="Choose participant" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10, marginTop: 18 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 18 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: MUTED }}>Suggested: participants with recent alerts or corrections</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 42, padding: "0 16px", borderRadius: 980, background: PANEL, fontSize: 14 }}>
+            <span style={{ color: MUTED }}>Participant</span>
+            <select value={p?.code ?? ""} onChange={(e) => e.target.value && goTo(e.target.value)} style={{ border: 0, background: "transparent", font: "inherit", fontSize: 14, color: INK, maxWidth: 260 }}>
+              {!p && <option value="">Choose a participant</option>}
+              {[...new Set(data.all.map((x) => x.study))].map((study) => (
+                <optgroup key={study} label={study}>
+                  {data.all.filter((x) => x.study === study).map((x) => <option key={x.code} value={x.code}>{x.code} · {x.site}</option>)}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div role="group" aria-label="Suggested participants" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10, marginTop: 4 }}>
           {data.pickers.map((pk) => {
             const on = pk.code === p?.code;
             return (

@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import type { AlertStatus, JourneyRow, JourneysData } from "../types";
-import { BLUE, Footer, INK, MUTED, PANEL, Source, Stale, Status, segment, useApi, useSources } from "../ui";
+import { BLUE, Footer, INK, MUTED, PANEL, Source, Stale, Status, StudyTabs, segment, useApi, useSources } from "../ui";
 
 const selectStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 8, minHeight: 42, padding: "0 16px", borderRadius: 980, background: PANEL, fontSize: 14 };
 
@@ -27,7 +27,8 @@ export default function Journeys() {
   const [showSources, toggleSources] = useSources();
   // Opens on the participants who need attention, which stays short as studies are added.
   const [stalledOnly, setStalledOnly] = useState(true);
-  const [study, setStudy] = useState("all");
+  // A study's "Participant timelines" tab opens this page filtered to that study (?study=MX-101).
+  const [study, setStudy] = useState(() => new URLSearchParams(location.search).get("study") ?? "all");
   if (!data) return <Status error={error} notFound={notFound} onRetry={reload} what="journeys" />;
 
   const LO = data.firstDay, HI = 2, SPAN = HI - LO;
@@ -60,6 +61,7 @@ export default function Journeys() {
     .map((st) => ({ ...st, rows: stalledOnly ? st.rows.filter((r) => r.stalled) : st.rows }))
     .filter((st) => st.rows.length > 0);
   const inScope = data.studies.filter((st) => study === "all" || st.short === study);
+  const scoped = study === "all" ? null : data.studies.find((st) => st.short === study) ?? null;
   const stalledCount = inScope.reduce((n, st) => n + st.rows.filter((r) => r.stalled).length, 0);
   const totalCount = inScope.reduce((n, st) => n + st.rows.length, 0);
   // Drop a date tick that would collide with "Today".
@@ -68,6 +70,7 @@ export default function Journeys() {
 
   return (
     <main>
+      {scoped && <StudyTabs nav={scoped.nav} current={scoped.nav.timelines} />}
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise page-head" style={{ paddingBottom: 32 }}>
         <h1 className="page-title">Participant timelines</h1>
