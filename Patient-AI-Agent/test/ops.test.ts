@@ -54,3 +54,17 @@ test("times read like a person would say them", () => {
   assert.equal(when(null), "");
   assert.equal(age(new Date(Date.now() - 3.5 * 86_400_000)), 3);
 });
+
+test("the loop guard holds a reply after six to one person in a minute, per person", async () => {
+  const { LoopGuard } = await import("../src/agent/channel.ts");
+  const guard = new LoopGuard("test", 6, 60_000);
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const sam = Array.from({ length: 8 }, () => guard.allow("sam"));
+    assert.deepEqual(sam, [true, true, true, true, true, true, false, false]);
+    assert.equal(guard.allow("thomas"), true);
+  } finally {
+    console.error = original;
+  }
+});

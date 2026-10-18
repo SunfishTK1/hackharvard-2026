@@ -19,6 +19,39 @@ export interface Conversation {
   typing<T>(work: () => Promise<T>): Promise<T>;
 }
 
+/**
+ * A backstop against reply loops (an agent answering events, or two bots answering each other): at
+ * most `limit` replies to one person in `windowMs`. Returns false, and logs once, when a reply
+ * should be held back.
+ */
+export class LoopGuard {
+  private readonly sent = new Map<string, number[]>();
+  private readonly name: string;
+  private readonly limit: number;
+  private readonly windowMs: number;
+
+  constructor(name: string, limit = 6, windowMs = 60_000) {
+    this.name = name;
+    this.limit = limit;
+    this.windowMs = windowMs;
+  }
+
+  allow(key: string): boolean {
+    const now = Date.now();
+    const recent = (this.sent.get(key) ?? []).filter((t) => now - t < this.windowMs);
+    if (recent.length >= this.limit) {
+      if (recent.length === this.limit) console.error(`${this.name}: loop guard held a reply (${this.limit} in ${this.windowMs / 1000} s to one person)`);
+      recent.push(now);
+      this.sent.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.sent.set(key, recent);
+    if (this.sent.size > 5000) this.sent.clear();
+    return true;
+  }
+}
+
 /** Finds a live conversation for a stored thread, to message people outside a reply. */
 export interface ChannelResolver {
   resolve(thread: Thread): Promise<Conversation | undefined>;

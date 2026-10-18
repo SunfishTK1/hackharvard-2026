@@ -4,7 +4,7 @@
 import type { Assistant } from "../agent/assistant.ts";
 import type { Escalation } from "../agent/journey.ts";
 import { describeError } from "../agent/brain.ts";
-import type { ChannelResolver, Conversation } from "../agent/channel.ts";
+import { LoopGuard, type ChannelResolver, type Conversation } from "../agent/channel.ts";
 import { config } from "../config.ts";
 import type { Thread as SageThread } from "../store.ts";
 import type { AnalysisDone } from "./analyst.ts";
@@ -19,6 +19,7 @@ const TO_OPS = /^\s*(\/)?(ops|trial ops)\s*[.!]?\s*$/i;
 export class OpsAgent {
   readonly core: OpsCore;
   private readonly channels: ChannelResolver[] = [];
+  private readonly loopGuard = new LoopGuard("ops");
   /** Handles told this line is for study teams, so they're told once a day at most. */
   private readonly turnedAway = new Map<string, number>();
 
@@ -65,6 +66,7 @@ export class OpsAgent {
           await store.setChatMode(ops, m.id, "sage");
           return this.say(conversation, heard.threadId, `Okay, this chat is with ${config.assistantName} now. Text "ops" to come back to ${config.ops.name}.`);
         }
+        if (!this.loopGuard.allow(m.id)) return;
         let note: string | undefined;
         if (!options.dedicated && TO_OPS.test(text)) {
           await store.setChatMode(ops, m.id, "ops");

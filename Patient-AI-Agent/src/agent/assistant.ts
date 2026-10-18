@@ -10,7 +10,7 @@ import type { TrialKnowledge } from "../knowledge/types.ts";
 import type { LineRouter } from "../router/router.ts";
 import * as store from "../store.ts";
 import { Brain, describeError } from "./brain.ts";
-import type { ChannelResolver, Conversation } from "./channel.ts";
+import { LoopGuard, type ChannelResolver, type Conversation } from "./channel.ts";
 import { Journey } from "./journey.ts";
 import { systemPrompt, toMessages, type TurnContext } from "./prompt.ts";
 import { speak, voiceEnabled } from "../voice/xai.ts";
@@ -72,6 +72,7 @@ export class Assistant {
   private readonly router: LineRouter | undefined;
   private readonly brain = new Brain();
   private readonly channels: ChannelResolver[] = [];
+  private readonly loopGuard = new LoopGuard("assistant");
 
   /** Without a router the assistant answers every message (console chat, a dedicated line). */
   constructor(knowledge: TrialKnowledge, router?: LineRouter) {
@@ -197,6 +198,7 @@ export class Assistant {
   }
 
   private async turn(personId: string, conversation: Conversation, threadId: string): Promise<void> {
+    if (!this.loopGuard.allow(personId)) return;
     const ctx = await asPerson(personId, (q) => this.context(q, personId));
     if (!ctx) return this.say(conversation, personId, threadId, NOT_RECRUITING);
     const cards: store.Form[] = [];

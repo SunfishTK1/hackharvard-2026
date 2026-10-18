@@ -11,6 +11,9 @@ import { transcribe, voiceEnabled } from "../voice/xai.ts";
 import type { ChannelResolver, Conversation } from "./channel.ts";
 
 type App = Awaited<ReturnType<typeof connect>>;
+
+/** What a person sends that deserves an answer. Everything else on the stream is an event. */
+const MESSAGE_TYPES = new Set<string>(["text", "markdown", "voice", "attachment", "richlink", "contact"]);
 const connect = (projectId: string, projectSecret: string) => Spectrum({ projectId, projectSecret, providers: [imessage.config()] });
 
 const sessionOf = (message: Message | undefined) => (message as { miniAppCardSession?: unknown } | undefined)?.miniAppCardSession;
@@ -74,6 +77,9 @@ export class SpectrumChannel implements ChannelResolver {
           });
         continue;
       }
+      // Only real messages get an answer. Read receipts, typing, tapbacks and other events never do:
+      // answering them makes a loop, since each reply earns another read receipt.
+      if (!MESSAGE_TYPES.has(content.type)) continue;
       const text = content.type === "text" ? content.text : `[sent ${content.type === "attachment" ? "an attachment" : `a ${content.type}`}]`;
       handler.onInbound(this.conversation(space, handle), text, message.id);
     }
