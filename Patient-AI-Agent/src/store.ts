@@ -235,6 +235,59 @@ export async function dueAssessments(q: Query, e: Engagement): Promise<{ measure
   return (await q("select * from assistant.due_assessments($1)", [e.id])) as never;
 }
 
+export interface StudyOverview {
+  participantCode: string;
+  status: PlatformState["status"];
+  startedAt: Date | null;
+  durationWeeks: number | null;
+  studyDay: number | null;
+  assessmentsDue14d: number;
+  assessmentsDone14d: number;
+}
+
+export async function studyOverview(q: Query, e: Engagement): Promise<StudyOverview | undefined> {
+  if (!e.participantId) return undefined;
+  const [r] = await q("select * from assistant.study_overview($1)", [e.id]);
+  return r && {
+    participantCode: r.participant_code, status: r.participant_status, startedAt: r.started_at, durationWeeks: r.duration_weeks,
+    studyDay: r.study_day, assessmentsDue14d: r.assessments_due_14d, assessmentsDone14d: r.assessments_done_14d,
+  };
+}
+
+export async function todayAssessments(q: Query, e: Engagement): Promise<{ measureCode: string; label: string; dueAt: Date; closesAt: Date; status: string }[]> {
+  if (!e.participantId) return [];
+  const rows = await q("select * from assistant.today_assessments($1)", [e.id]);
+  return rows.map((r) => ({ measureCode: r.measure_code, label: r.label, dueAt: r.due_at, closesAt: r.window_closes_at, status: r.status }));
+}
+
+export interface Reading {
+  measureCode: string;
+  label: string;
+  unit: string | null;
+  value: number | boolean | string | null;
+  capturedAt: Date;
+}
+
+export async function recentReadings(q: Query, e: Engagement, days = 14): Promise<Reading[]> {
+  if (!e.participantId) return [];
+  const rows = await q("select * from assistant.recent_observations($1, $2)", [e.id, days]);
+  return rows.map((r) => ({
+    measureCode: r.measure_code, label: r.label, unit: r.unit, capturedAt: r.captured_at,
+    value: r.numeric_value !== null ? Number(r.numeric_value) : r.boolean_value ?? r.text_value,
+  }));
+}
+
+export async function appointments(q: Query, engagementId: string): Promise<(Appointment & { status: string })[]> {
+  const rows = await q(
+    `select a.id, a.starts_at, a.ends_at, a.kind, a.location, a.status, s.institution_name, s.site_code, nullif(s.time_zone, 'UTC') as time_zone
+     from assistant.appointments a join public.sites s on s.id = a.site_id
+     where a.engagement_id = $1 and a.status <> 'cancelled' order by a.starts_at`, [engagementId]);
+  return rows.map((a) => ({
+    id: a.id, startsAt: a.starts_at, endsAt: a.ends_at, kind: a.kind, location: a.location, status: a.status,
+    siteName: a.institution_name, siteCode: a.site_code, timeZone: a.time_zone,
+  }));
+}
+
 export type Severity = "low" | "medium" | "high" | "critical";
 
 /**
@@ -456,10 +509,12 @@ export async function submitForm(q: Query, f: Form, result: Record<string, unkno
 }
 
 /** The latest open (not submitted) form of a kind, to reuse instead of sending duplicates. */
-export async function openFormOfKind(q: Query, engagementId: string, kind: CardKind): Promise<Form | undefined> {
+/** An open form of this kind (and study-page view, if any) that a new card can reuse. */
+export async function openFormOfKind(q: Query, engagementId: string, kind: CardKind, view: string | null = null): Promise<Form | undefined> {
   const [r] = await q(
     `select * from assistant.forms where engagement_id = $1 and kind = $2 and status in ('created', 'sent', 'opened') and expires_at > now()
-     order by created_at desc limit 1`, [engagementId, kind]);
+       and coalesce(payload->>'view', '') = coalesce($3, '')
+     order by created_at desc limit 1`, [engagementId, kind, view]);
   return r ? toForm(r) : undefined;
 }
 

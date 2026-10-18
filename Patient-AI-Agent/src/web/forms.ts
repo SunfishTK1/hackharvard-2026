@@ -9,6 +9,7 @@ import { generateSlots } from "../domain/scheduling.ts";
 import { PREFERRED_SITE } from "../knowledge/rules.ts";
 import type { CheckInMeasure, TrialKnowledge, TrialSummary } from "../knowledge/types.ts";
 import * as store from "../store.ts";
+import { clientSecret, fromMeasure, fromQuestion, REALTIME_MODEL, REALTIME_URL, sessionConfig } from "../voice/realtime.ts";
 import { consumeVerification } from "./verify.ts";
 
 export class HttpError extends Error {
@@ -36,6 +37,16 @@ const RESULT_COPY = {
 const publicQuestion = ({ criteria: _c, ...q }: Question) => q;
 const fmtWhen = (iso: Date | string, timeZone: string) =>
   new Date(iso).toLocaleString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+const SYMPTOMS: Record<string, string> = {
+  dizziness: "Dizziness", headache: "Headache", nausea: "Nausea", tired: "Very tired", swelling: "Swelling",
+  chest_pain: "Chest pain", breathing: "Trouble breathing", other: "Something else",
+};
+/** Symptoms that always mean "call 911 first". */
+const URGENT_SYMPTOMS = new Set(["chest_pain", "breathing"]);
+const SEVERITY_LEVEL = { mild: "low", moderate: "medium", severe: "high" } as const;
+const localDay = (d: Date, timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+const localTime = (d: Date, timeZone: string) => d.toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit" });
 
 /** Platform rule violations (check_violation) become a 409 with the platform's reason. */
 function platformError(error: unknown): never {
@@ -104,7 +115,15 @@ export class Forms {
         case "checkin": {
           if (!(await store.journeyFacts(q, e)).isEnrolled) throw new HttpError(409, "Check-ins start once you're enrolled.");
           const measures = await this.knowledge.checkInMeasures(e.trialId);
-          return { ...base, data: { measures, submitted: form.status === "submitted" ? form.result : undefined } };
+          return {
+            ...base,
+            data: { measures, submitted: form.status === "submitted" ? form.result : undefined, progress: form.status === "submitted" ? await this.progress(q, e, trial) : undefined },
+          };
+        }
+        case "study": {
+          if (!(await store.journeyFacts(q, e)).isEnrolled) throw new HttpError(409, "Your study page opens once you're enrolled.");
+          // A study card can open one screen directly (report a symptom, the next visit, the week).
+          return { ...base, data: { ...(await this.study(q, e, trial)), view: typeof form.payload.view === "string" ? form.payload.view : null } };
         }
         case "document":
           return { ...base, data: { requiresVerification: true } };
@@ -144,6 +163,83 @@ export class Forms {
     return { timeZone: trial.timezone, sites, slots, preferredSite: home ?? (typeof preferred === "string" && preferred !== "either" ? preferred : null) };
   }
 
+  /** Check-in streak and reading trends for the last week, in the participant's time zone. */
+  private async progress(q: Query, e: store.Engagement, trial: TrialSummary) {
+    const zone = trial.sites.find((s) => s.id === e.siteId)?.timeZone ?? trial.timezone;
+    const measures = await this.knowledge.checkInMeasures(e.trialId);
+    const codes = new Set(measures.map((m) => m.code));
+    const readings = (await store.recentReadings(q, e, 8)).filter((r) => codes.has(r.measureCode));
+    const days = Array.from({ length: 7 }, (_, i) => localDay(new Date(Date.now() - (6 - i) * 86_400_000), zone));
+    const today = days[6];
+    const reported = new Set(readings.map((r) => localDay(r.capturedAt, zone)));
+    const streak = days.map((day) => ({
+      day,
+      label: new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "narrow", timeZone: "UTC" }),
+      status: reported.has(day) ? "done" : day === today ? "today" : "missed",
+    }));
+    // Numeric measures with the most readings become trend lines (last reading of each day).
+    const numeric = measures.filter((m) => ["number", "integer", "scale"].includes(m.valueType));
+    const trends = numeric
+      .map((m) => {
+        const points = days.map((day) => {
+          const last = readings.filter((r) => r.measureCode === m.code && localDay(r.capturedAt, zone) === day).at(-1);
+          return typeof last?.value === "number" ? last.value : null;
+        });
+        return { code: m.code, label: m.label, unit: m.unit, points, latest: points.filter((p) => p !== null).at(-1) ?? null };
+      })
+      .filter((t) => t.points.some((p) => p !== null))
+      .sort((a, b) => b.points.filter((p) => p !== null).length - a.points.filter((p) => p !== null).length)
+      .slice(0, 3);
+    return { streak, trends, daysReported: streak.filter((d) => d.status === "done").length };
+  }
+
+  /** The "Your study" page: where they are, what's due today, their readings and visits. */
+  private async study(q: Query, e: store.Engagement, trial: TrialSummary) {
+    const zone = trial.sites.find((s) => s.id === e.siteId)?.timeZone ?? trial.timezone;
+    const overview = await store.studyOverview(q, e);
+    const measures = await this.knowledge.checkInMeasures(e.trialId);
+    const codes = new Set(measures.map((m) => m.code));
+    const now = Date.now();
+    // Today's own (self-reported) assessments, grouped by when they're due.
+    const groups = new Map<string, { time: string; labels: string[]; statuses: string[]; dueAt: Date; closesAt: Date }>();
+    for (const a of (await store.todayAssessments(q, e)).filter((a) => codes.has(a.measureCode))) {
+      const time = localTime(a.dueAt, zone);
+      const g = groups.get(time) ?? { time, labels: [], statuses: [], dueAt: a.dueAt, closesAt: a.closesAt };
+      g.labels.push(a.label);
+      g.statuses.push(a.status);
+      groups.set(time, g);
+    }
+    const tasks = [...groups.values()].map((g) => ({
+      time: g.time,
+      title: g.labels.join(", "),
+      status: g.statuses.every((s) => s === "completed") ? "done" : g.closesAt.getTime() < now ? "missed" : g.dueAt.getTime() <= now ? "due" : "later",
+    }));
+    const weeks = overview?.durationWeeks ?? trial.durationWeeks;
+    const day = overview?.studyDay ?? null;
+    const visits = (await store.appointments(q, e.id)).map((a) => ({
+      id: a.id,
+      label: a.kind === "screening_visit" ? "Screening visit" : a.kind === "phone_call" ? "Phone call" : "Study visit",
+      when: fmtWhen(a.startsAt, a.timeZone ?? zone),
+      where: a.location ?? a.siteName,
+      status: a.status === "completed" || a.startsAt.getTime() < now ? "done" : "upcoming",
+    }));
+    return {
+      participantCode: overview?.participantCode,
+      week: day ? Math.max(1, Math.min(weeks ?? Infinity, Math.ceil(day / 7))) : null,
+      weeks,
+      day,
+      totalDays: weeks ? weeks * 7 : null,
+      assessments: { due: overview?.assessmentsDue14d ?? 0, done: overview?.assessmentsDone14d ?? 0 },
+      tasks,
+      visits,
+      measures,
+      symptoms: Object.entries(SYMPTOMS).map(([value, label]) => ({ value, label, urgent: URGENT_SYMPTOMS.has(value) })),
+      contactPhone: trial.contactPhone,
+      site: trial.sites.find((s) => s.id === e.siteId)?.name ?? null,
+      ...(await this.progress(q, e, trial)),
+    };
+  }
+
   // Submissions -----------------------------------------------------------------------------
 
   async submitPrescreen(req: FormRequest, raw: Record<string, unknown>) {
@@ -176,7 +272,7 @@ export class Forms {
     return { status: result.status, ...copy };
   }
 
-  async submitConsent(req: FormRequest, body: { verificationId?: string; signedName?: string; agreements?: unknown; answers?: Record<string, number>; dryRun?: boolean }) {
+  async submitConsent(req: FormRequest, body: { verificationId?: string; signedName?: string; agreements?: unknown; answers?: Record<string, number>; dryRun?: boolean; prepare?: boolean }) {
     const { form, engagement: e } = req;
     const doc = await this.knowledge.consentDocument(e.trialId, e.siteId);
     if (!doc) throw new HttpError(404, "The consent form isn't available.");
@@ -192,6 +288,8 @@ export class Forms {
     if (name.length < 3) throw new HttpError(422, "Type your full name to sign.");
     const agreements = Array.isArray(body.agreements) ? body.agreements.map(String).slice(0, 10) : [];
     if (agreements.length < 3) throw new HttpError(422, "Please check each statement.");
+    // Everything but identity checks out: the handoff to Face ID in Safari can start.
+    if (body.prepare) return { ok: true, name, documentTitle: doc.title };
 
     const signedAt = await asPerson(form.personId, async (q) => {
       if ((await store.currentConsent(q, e))?.status === "signed") throw new HttpError(409, "You've already signed this form.");
@@ -203,7 +301,8 @@ export class Forms {
         agreements, comprehension: body.answers, form_id: form.id, ip_address: req.ip ?? null, user_agent: req.userAgent ?? null,
       }).catch(platformError);
       await store.audit(q, form.personId, e.id, "person", "consent_signed", { document_id: doc.id, version: doc.version, method: verification.method }, req);
-      await q("select assistant.set_display_name($1)", [name]);
+      // The signature is the legal record; it names them only if they never told Sage what to call them.
+      if (!(await store.person(q, form.personId)).displayName) await q("select assistant.set_display_name($1)", [name]);
       await this.assistant.journey.afterSignature(q, e);
       await store.submitForm(q, form, { signedAt: at, method: verification.method });
       return at;
@@ -248,7 +347,8 @@ export class Forms {
 
   async submitCheckIn(req: FormRequest, body: { values?: Record<string, unknown> }) {
     const { form, engagement: e } = req;
-    if (form.status === "submitted") throw new HttpError(409, "You've already checked in with this card.");
+    // A check-in card is used once; the study page can check in any day.
+    if (form.kind === "checkin" && form.status === "submitted") throw new HttpError(409, "You've already checked in with this card.");
     const measures = await this.knowledge.checkInMeasures(e.trialId);
     const values = body.values ?? {};
     const rows: { m: CheckInMeasure; value: unknown; shown: string }[] = [];
@@ -258,20 +358,144 @@ export class Forms {
       rows.push({ m, ...checkValue(m, v) });
     }
     if (!rows.length) throw new HttpError(422, "Answer at least one question.");
+    const pressure = bloodPressureProblem(measures, Object.fromEntries(rows.map((r) => [r.m.code, r.value])));
+    if (pressure) throw new HttpError(422, pressure);
     await asPerson(form.personId, async (q) => {
       if (!(await store.journeyFacts(q, e)).isEnrolled) throw new HttpError(409, "Check-ins start once you're enrolled.");
       for (const r of rows) {
         await store.recordObservation(q, e, { measureCode: r.m.code, value: r.value, source: "questionnaire", raw: String(r.value), confidence: 1 }).catch(platformError);
       }
       await store.setGoalStatus(q, e.id, "daily_check_in", "active", `Last check-in ${new Date().toISOString().slice(0, 10)}`);
-      await store.submitForm(q, form, Object.fromEntries(rows.map((r) => [r.m.code, r.shown])));
+      if (form.kind === "checkin") await store.submitForm(q, form, Object.fromEntries(rows.map((r) => [r.m.code, r.shown])));
+      else await store.audit(q, form.personId, e.id, "person", "checkin_submitted", { form_id: form.id, measures: rows.map((r) => r.m.code) });
     });
     this.assistant.onFormEvent({
       personId: form.personId, formId: form.id,
       summary: `They completed a check-in, already saved to their study record: ${rows.map((r) => `${r.m.label} ${r.shown}`).join(", ")}.`,
-      detail: { when: "Thanks for today" },
+      detail: { when: form.kind === "study" ? "Checked in today" : "Thanks for today" },
     });
-    return { saved: rows.length };
+    const progress = await asPerson(form.personId, (q) => this.progress(q, e, req.trial));
+    return { saved: rows.length, progress };
+  }
+
+  /** Starts a live voice session (Grok) for the prescreen or a check-in: a short-lived secret and the session setup. */
+  async voiceSession(req: FormRequest) {
+    const { form, engagement: e, trial } = req;
+    const person = await asPerson(form.personId, (q) => store.person(q, form.personId));
+    const firstName = store.firstName(person);
+    let kind: "prescreen" | "checkin";
+    let items;
+    if (form.kind === "prescreen") {
+      if (form.status === "submitted" || e.phase !== "prequalification") throw new HttpError(409, "You've already sent this.");
+      const questions = await this.knowledge.prescreenQuestions(e.trialId);
+      kind = "prescreen";
+      // Their name is already known, so Grok doesn't ask for it again.
+      items = questions.filter((q) => !(q.key === "first_name" && firstName)).map((q) => fromQuestion(q, questions));
+    } else if (form.kind === "checkin" || form.kind === "study") {
+      kind = "checkin";
+      items = (await this.knowledge.checkInMeasures(e.trialId)).map(fromMeasure);
+    } else throw new HttpError(404, "Voice isn't available for this card.");
+    const secret = await clientSecret();
+    await asPerson(form.personId, (q) => store.audit(q, form.personId, e.id, "person", "voice_session_started", { form_id: form.id, kind }, req));
+    return { url: `${REALTIME_URL}?model=${REALTIME_MODEL}`, token: secret.value, expiresAt: secret.expiresAt, session: sessionConfig(kind, items, { firstName, study: trial.shortTitle }) };
+  }
+
+  /** One answer Grok recorded by voice, checked exactly like a tap. Nothing is saved until they submit. */
+  async voiceAnswer(req: FormRequest, body: { key?: unknown; answer?: unknown; heard?: unknown }) {
+    const { form, engagement: e } = req;
+    const key = String(body.key ?? "");
+    const said = String(body.answer ?? "").trim().slice(0, 300);
+    const skipping = /^(skip|skipped|don't know|dont know|not sure|pass)$/i.test(said);
+    if (form.kind === "prescreen") {
+      const question = (await this.knowledge.prescreenQuestions(e.trialId)).find((q) => q.key === key);
+      if (!question) return { ok: false, error: `There's no question ${key}.` };
+      if (skipping) return question.required ? { ok: false, error: "This question needs an answer; ask it again simply." } : { ok: true, key, value: null, display: "Skipped" };
+      const result = normalizeAnswer(question, spokenChoice(question.options, said, question.type === "multi_choice"));
+      if ("error" in result) return { ok: false, error: result.error };
+      return { ok: true, key, value: result.value, display: shown(question, result.value) };
+    }
+    const measure = (await this.knowledge.checkInMeasures(e.trialId)).find((m) => m.code === key);
+    if (!measure) return { ok: false, error: `There's no question ${key}.` };
+    if (skipping) return { ok: true, key, value: null, display: "Skipped" };
+    try {
+      const options = measure.choices?.map((c) => ({ value: c, label: c.replace(/_/g, " ") }));
+      const raw = measure.valueType === "boolean" ? normalizeAnswer({ key, prompt: "", type: "yes_no", required: true }, said)
+        : measure.valueType === "choice" ? { value: spokenChoice(options, said, false) }
+        : measure.valueType === "text" ? { value: said }
+        : normalizeAnswer({ key, prompt: "", type: "number", required: true }, said);
+      if ("error" in raw) return { ok: false, error: raw.error };
+      const checked = checkValue(measure, raw.value);
+      const heard = body.heard && typeof body.heard === "object" ? (body.heard as Record<string, unknown>) : {};
+      const pressure = bloodPressureProblem(await this.knowledge.checkInMeasures(e.trialId), { ...heard, [key]: checked.value });
+      if (pressure) return { ok: false, error: `${pressure} Ask for both numbers again, top number first, and record both.` };
+      return { ok: true, key, value: checked.value, display: checked.shown };
+    } catch (error) {
+      return { ok: false, error: (error as Error).message };
+    }
+  }
+
+  /** A symptom from the study page: an alert at their site (urgent ones flagged high), then Sage follows up. */
+  async submitSymptom(req: FormRequest, body: { symptoms?: unknown; severity?: unknown; note?: unknown }) {
+    const { form, engagement: e } = req;
+    const picked = (Array.isArray(body.symptoms) ? body.symptoms.map(String) : []).filter((s) => s in SYMPTOMS).slice(0, 8);
+    const note = String(body.note ?? "").trim().slice(0, 500);
+    if (!picked.length && !note) throw new HttpError(422, "Pick a symptom or describe it.");
+    const severity = String(body.severity ?? "") as keyof typeof SEVERITY_LEVEL;
+    if (!(severity in SEVERITY_LEVEL)) throw new HttpError(422, "Choose how bad it is.");
+    const urgent = severity === "severe" || picked.some((s) => URGENT_SYMPTOMS.has(s));
+    const labels = picked.map((s) => SYMPTOMS[s]).join(", ") || "Something else";
+    const raised = await asPerson(form.personId, async (q) => {
+      if (!(await store.journeyFacts(q, e)).isEnrolled) throw new HttpError(409, "Symptom reports open once you're enrolled. Text Sage instead.");
+      return this.assistant.journey.alertStaff(q, e, urgent && picked.some((s) => URGENT_SYMPTOMS.has(s)) ? "critical" : SEVERITY_LEVEL[severity],
+        `Reported in the study page: ${labels} (${severity}).${note ? ` "${note}"` : ""}`,
+        urgent ? "Contact the participant now; they were told to call 911 for an emergency." : "Contact the participant and assess for an adverse event.",
+        "adverse_event", `symptom:${[...picked].sort().join("+") || "other"}:${severity}`);
+    });
+    this.assistant.onFormEvent({
+      personId: form.personId, formId: form.id,
+      summary: `They reported a symptom in the study page: ${labels}, ${severity}${note ? ` ("${note}")` : ""}. ${raised ? "The study team has been alerted." : "The study team already had an open alert about this."}${urgent ? " The page told them to call 911 first if it's an emergency." : ""}`,
+      detail: { when: "Symptom sent to the team" },
+    });
+    return { urgent, labels, contactPhone: req.trial.contactPhone };
+  }
+
+  /** Pause reminders, ask for a call, or stop taking part, from the study page. */
+  async submitLeave(req: FormRequest, body: { choice?: unknown; note?: unknown }) {
+    const { form, engagement: e } = req;
+    const choice = String(body.choice ?? "");
+    const note = String(body.note ?? "").trim().slice(0, 300);
+    if (!["pause", "talk", "stop"].includes(choice)) throw new HttpError(422, "Pick an option.");
+    const untilDate = new Date(Date.now() + 3 * 86_400_000);
+    const until = untilDate.toLocaleDateString("en-US", { timeZone: req.trial.timezone, weekday: "long", month: "short", day: "numeric" });
+    const weekday = untilDate.toLocaleDateString("en-US", { timeZone: req.trial.timezone, weekday: "long" });
+    const site = req.trial.sites.find((s) => s.id === e.siteId)?.name;
+    const firstName = store.firstName(await asPerson(form.personId, (q) => store.person(q, form.personId)));
+    const outcome = await asPerson(form.personId, async (q) => {
+      if (choice === "pause") {
+        await store.remember(q, form.personId, { kind: "instruction", importance: 5, studyId: e.trialId, content: `Asked to pause study reminders until ${until}: don't send reminders or check-in nudges before then unless they ask.${note ? ` They said: "${note}"` : ""}` });
+        await store.audit(q, form.personId, e.id, "person", "reminders_paused", { until });
+        return { title: `Paused until ${weekday}.`, message: "You're still in the study. Text Sage anytime to start reminders again sooner.", summary: `They paused reminders until ${until} from the study page.` };
+      }
+      if (choice === "talk") {
+        await this.assistant.journey.alertStaff(q, e, "medium", `The participant asked for a call from the study team.${note ? ` "${note}"` : ""}`, "Call the participant.", "callback_request", "callback");
+        return { title: "We'll call you.", message: `A coordinator${site ? ` from ${site}` : ""} calls, usually the same day.`, summary: `They asked for a call from the study team (study page)${note ? `: "${note}"` : ""}. The team has been asked to call.` };
+      }
+      const moved = await this.assistant.journey.move(q, e, "withdrawn", "person", note || "Stopped taking part from the study page");
+      if (!moved.ok) throw new HttpError(409, "We couldn't record that. Text Sage and we'll help.");
+      await this.assistant.journey.alertStaff(q, e, "high", `The participant stopped taking part (study page).${note ? ` "${note}"` : ""}`, "Follow up on safety and any study equipment.", "participant_left");
+      return { title: `Thank you${firstName ? `, ${firstName}` : ""}.`, message: "You've stopped taking part. We're grateful for everything you contributed. Text Sage anytime with questions.", summary: `They stopped taking part in the study from the study page${note ? `: "${note}"` : ""}. Their participation is withdrawn and the team was told.` };
+    });
+    this.assistant.onFormEvent({ personId: form.personId, formId: form.id, summary: outcome.summary, detail: { when: choice === "pause" ? `Reminders paused until ${until}` : choice === "talk" ? "A coordinator will call" : "Stopped taking part" } });
+    return { choice, title: outcome.title, message: outcome.message };
+  }
+
+  /** "Need a different time?" for a study visit: the team is asked, and Sage follows up. */
+  async requestVisitChange(req: FormRequest, body: { note?: unknown }) {
+    const { form, engagement: e } = req;
+    const note = String(body.note ?? "").trim().slice(0, 300);
+    await asPerson(form.personId, (q) => this.assistant.journey.alertStaff(q, e, "low", `The participant asked to change a visit time.${note ? ` "${note}"` : ""}`, "Contact them to reschedule.", "visit_change", "visit-change"));
+    this.assistant.onFormEvent({ personId: form.personId, formId: form.id, summary: `They asked to change a visit time${note ? `: "${note}"` : ""}. The study team has been asked to reschedule with them.`, detail: { when: "Visit change requested" } });
+    return { ok: true };
   }
 
   /** Signed consent and visit details, after Face ID (or typed name). */
@@ -304,11 +528,33 @@ export class Forms {
     return [
       "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Patient AI Agent//EN", "BEGIN:VEVENT",
       `UID:${visit.id}@${config.rpId}`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(visit.startsAt)}`, `DTEND:${stamp(visit.endsAt)}`,
-      `SUMMARY:${req.trial.shortTitle} screening visit`, `LOCATION:${(visit.location ?? visit.siteName).replace(/[,;]/g, "\\$&")}`,
+      `SUMMARY:${req.trial.shortTitle} ${visit.kind === "screening_visit" ? "screening visit" : visit.kind === "phone_call" ? "call" : "study visit"}`, `LOCATION:${(visit.location ?? visit.siteName).replace(/[,;]/g, "\\$&")}`,
       "DESCRIPTION:Bring a photo ID and a list of your current medicines.", "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY",
       "DESCRIPTION:Study visit in 2 hours", "END:VALARM", "END:VEVENT", "END:VCALENDAR",
     ].join("\r\n");
   }
+}
+
+/** A spoken choice ("the one in Boston", "Quincy") as the option's value; other answers pass through. */
+function spokenChoice(options: { value: string; label: string }[] | undefined, said: string, multiple: boolean): string | string[] {
+  if (!options?.length) return said;
+  const pick = (part: string) => {
+    const s = part.trim().toLowerCase();
+    return options.find((o) => o.value.toLowerCase() === s || o.label.toLowerCase() === s)
+      ?? options.find((o) => s.includes(o.label.toLowerCase()) || o.label.toLowerCase().includes(s))
+      ?? options.find((o) => o.label.toLowerCase().split(/[\s,]+/).some((w) => w.length > 3 && s.includes(w)));
+  };
+  if (multiple) return said.split(/,| and /).map((p) => pick(p)?.value ?? p.trim()).filter(Boolean);
+  return pick(said)?.value ?? said;
+}
+
+/** How an answer reads back on screen ("34 years", "Yes", "Boston"). */
+function shown(q: Question, value: unknown): string {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.map((v) => q.options?.find((o) => o.value === v)?.label ?? v).join(", ");
+  const option = q.options?.find((o) => o.value === value);
+  if (option) return option.label;
+  return `${value}${q.unit && typeof value === "number" ? ` ${q.unit}` : ""}`;
 }
 
 /** One check-in value, validated against its measure the way the platform will. */
@@ -330,6 +576,19 @@ function checkValue(m: CheckInMeasure, v: unknown): { value: unknown; shown: str
       return { value: n, shown: `${n}${m.unit ? ` ${m.unit}` : ""}` };
     }
   }
+}
+
+/**
+ * A blood pressure that can't be right: the top (systolic) number at or below the bottom
+ * (diastolic) one, which usually means the two were swapped or misheard. Checked before saving.
+ */
+function bloodPressureProblem(measures: CheckInMeasure[], values: Record<string, unknown>): string | undefined {
+  const find = (re: RegExp) => measures.find((m) => re.test(`${m.code} ${m.label}`));
+  const sys = find(/systolic/i), dia = find(/diastolic/i);
+  if (!sys || !dia) return undefined;
+  const top = Number(values[sys.code]), bottom = Number(values[dia.code]);
+  if (values[sys.code] == null || values[dia.code] == null || !Number.isFinite(top) || !Number.isFinite(bottom)) return undefined;
+  return top <= bottom ? `The top number (systolic, ${top}) should be higher than the bottom number (diastolic, ${bottom}). Check the cuff.` : undefined;
 }
 
 /**

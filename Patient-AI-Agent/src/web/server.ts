@@ -9,7 +9,9 @@ import { asPerson, shared } from "../db.ts";
 import type { TrialKnowledge } from "../knowledge/types.ts";
 import * as store from "../store.ts";
 import { HttpError, type FormRequest, type Forms } from "./forms.ts";
-import { verifyOptions, verifyPasskey, verifyTypedName, type VerifyAction } from "./verify.ts";
+import type { Assistant } from "../agent/assistant.ts";
+import { createHandoff, handoff, latestHandoff } from "./handoff.ts";
+import { deviceKeyChallenge, verifyDeviceKey, verifyOptions, verifyPasskey, verifyTypedName, type VerifyAction } from "./verify.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const PUBLIC = join(ROOT, "public");
@@ -22,8 +24,9 @@ const TYPES: Record<string, string> = {
 const SECURITY_HEADERS = {
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
-  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
-  "permissions-policy": "publickey-credentials-get=(self), publickey-credentials-create=(self)",
+  // The voice mode talks to Grok directly (wss://api.x.ai) with a short-lived secret from this server.
+  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://api.x.ai; base-uri 'none'; form-action 'none'",
+  "permissions-policy": "publickey-credentials-get=(self), publickey-credentials-create=(self), microphone=(self)",
 };
 
 // Plenty for a person filling in forms; stops anyone hammering the API.
@@ -39,7 +42,7 @@ function rateLimited(ip: string): boolean {
   return recent.length > MAX_POSTS;
 }
 
-export function startWebServer(knowledge: TrialKnowledge, forms: Forms, port = config.port) {
+export function startWebServer(knowledge: TrialKnowledge, forms: Forms, assistant?: Assistant, port = config.port) {
   const server = createServer((req, res) => {
     handle(req, res).catch((error: unknown) => {
       const status = error instanceof HttpError ? error.status : 500;
@@ -79,6 +82,9 @@ export function startWebServer(knowledge: TrialKnowledge, forms: Forms, port = c
 
     const page = path.match(/^\/f\/([A-Za-z0-9_-]+)\/?$/);
     if (page && method === "GET") return file(res, join(PUBLIC, "form.html"));
+    if (/^\/v\/[A-Za-z0-9_-]+\/?$/.test(path) && method === "GET") return file(res, join(PUBLIC, "verify.html"));
+    const safari = path.match(/^\/api\/v\/([A-Za-z0-9_-]+)(?:\/([a-z-]+))?$/);
+    if (safari) return handoffApi(safari[1], safari[2] ?? "", method, req, res);
     const ics = path.match(/^\/f\/([A-Za-z0-9_-]+)\/visit\.ics$/);
     if (ics) {
       const body = await forms.calendar(await load(ics[1], req));
@@ -95,6 +101,10 @@ export function startWebServer(knowledge: TrialKnowledge, forms: Forms, port = c
     const { form } = request;
 
     if (method === "GET" && action === "") return json(res, 200, await forms.view(request));
+    if (method === "GET" && action === "handoff-status") {
+      const h = latestHandoff(token, verifyAction(url.searchParams.get("action")));
+      return json(res, 200, { done: Boolean(h?.result), result: h?.result });
+    }
     if (method !== "POST") throw new HttpError(405, "Method not allowed");
     const body = await readJson(req);
 
@@ -109,27 +119,92 @@ export function startWebServer(knowledge: TrialKnowledge, forms: Forms, port = c
         if (form.kind !== "schedule") break;
         return json(res, 200, await forms.submitSchedule(request, body as never));
       case "checkin":
-        if (form.kind !== "checkin") break;
+        if (form.kind !== "checkin" && form.kind !== "study") break;
         return json(res, 200, await forms.submitCheckIn(request, body as never));
+      case "voice-session":
+        return json(res, 200, await forms.voiceSession(request));
+      case "voice-answer":
+        return json(res, 200, await forms.voiceAnswer(request, body as never));
+      case "symptom":
+        if (form.kind !== "study") break;
+        return json(res, 200, await forms.submitSymptom(request, body as never));
+      case "leave":
+        if (form.kind !== "study") break;
+        return json(res, 200, await forms.submitLeave(request, body as never));
+      case "visit-change":
+        if (form.kind !== "study") break;
+        return json(res, 200, await forms.requestVisitChange(request, body as never));
       case "document":
         return json(res, 200, await forms.document(request, String(body.verificationId ?? "")));
       case "verify-options":
         return json(res, 200, await verifyOptions(token, form.personId));
+      case "handoff": {
+        // Face ID in Safari: validate the pending action now, then hand it to a one-time link.
+        const action = verifyAction(body.action);
+        let intent: Record<string, unknown> = {};
+        if (action === "sign_consent") {
+          if (form.kind !== "consent") break;
+          const prepared = (await forms.submitConsent(request, { ...(body as Record<string, unknown>), prepare: true } as never)) as { documentTitle?: string };
+          intent = { signedName: body.signedName, agreements: body.agreements, answers: body.answers, documentTitle: prepared.documentTitle };
+        } else if (action === "view_document") {
+          if (form.kind !== "document") break;
+        } else break;
+        const h = createHandoff(token, action, intent);
+        const url = `${config.publicUrl}/v/${h.token}`;
+        assistant?.notify(form.personId, `Here's your secure Face ID link. Tap it, confirm in Safari, then come back to the card: ${url}`);
+        return json(res, 200, { url });
+      }
+      case "device-challenge":
+        return json(res, 200, deviceKeyChallenge(token, form.personId, verifyAction(body.action)));
       case "verify": {
-        const verifyAction = String(body.action) as VerifyAction;
-        if (!["sign_consent", "view_document", "confirm_appointment"].includes(verifyAction)) throw new HttpError(400, "Unknown action.");
+        const action = verifyAction(body.action);
         const meta = { ip: request.ip, userAgent: request.userAgent };
         const result = body.method === "typed_name"
-          ? await verifyTypedName(form.personId, form.id, verifyAction, String(body.name ?? ""), meta)
-          : await verifyPasskey(token, form.personId, form.id, verifyAction, body.response as never, meta);
+          ? await verifyTypedName(form.personId, form.id, action, String(body.name ?? ""), meta)
+          : body.method === "device_key"
+            ? await verifyDeviceKey(token, form.personId, form.id, action, body as never, meta)
+            : await verifyPasskey(token, form.personId, form.id, action, body.response as never, meta);
         return json(res, "error" in result ? 400 : 200, result);
       }
     }
     throw new HttpError(404, "Not found");
   }
 
+  /** The Safari page for a handoff: what it's for, then passkey options and verification. */
+  async function handoffApi(token: string, action: string, method: string, req: IncomingMessage, res: ServerResponse) {
+    if (!TOKEN.test(token)) throw new HttpError(404, "This link isn't valid.");
+    const h = handoff(token);
+    if (!h) throw new HttpError(410, "This link has expired. Tap Sign with Face ID in the card again.");
+    const request = await load(h.formToken, req);
+    const { form } = request;
+    if (method === "GET" && action === "") {
+      return json(res, 200, {
+        action: h.action, done: Boolean(h.result), result: h.result, assistantName: config.assistantName,
+        study: request.trial.shortTitle, name: h.intent.signedName ?? null, title: h.intent.documentTitle ?? form.title,
+      });
+    }
+    if (method !== "POST") throw new HttpError(405, "Method not allowed");
+    if (rateLimited(clientIp(req))) throw new HttpError(429, "Too many requests. Wait a minute and try again.");
+    if (h.result) return json(res, 200, h.result);
+    const body = await readJson(req);
+    if (action === "options") return json(res, 200, await verifyOptions(`handoff:${token}`, form.personId));
+    if (action !== "verify") throw new HttpError(404, "Not found");
+    const verified = await verifyPasskey(`handoff:${token}`, form.personId, form.id, h.action, body.response as never, { ip: request.ip, userAgent: request.userAgent });
+    if ("error" in verified) return json(res, 400, verified);
+    h.result = h.action === "sign_consent"
+      ? { action: h.action, ...(await forms.submitConsent(request, { ...h.intent, verificationId: verified.verificationId } as never)) }
+      : { action: h.action, ...(await forms.document(request, verified.verificationId)) };
+    return json(res, 200, h.result);
+  }
+
   server.listen(port, () => console.log(`web: mini-apps on :${port} (${config.publicUrl})`));
   return server;
+}
+
+function verifyAction(value: unknown): VerifyAction {
+  const action = String(value) as VerifyAction;
+  if (!["sign_consent", "view_document", "confirm_appointment"].includes(action)) throw new HttpError(400, "Unknown action.");
+  return action;
 }
 
 function clientIp(req: IncomingMessage): string {
@@ -169,7 +244,8 @@ async function file(res: ServerResponse, path: string) {
     const body = await readFile(path);
     res.writeHead(200, {
       "content-type": TYPES[extname(path)] ?? "application/octet-stream",
-      "cache-control": extname(path) === ".html" ? "no-store" : "public, max-age=300",
+      // Pages are never cached; assets are small and always revalidated, so fixes reach phones at once.
+      "cache-control": extname(path) === ".html" ? "no-store" : "no-cache",
       ...SECURITY_HEADERS,
     });
     res.end(body);

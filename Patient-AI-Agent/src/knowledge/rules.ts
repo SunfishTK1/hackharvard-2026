@@ -119,13 +119,13 @@ function describeField(field: string) {
 
 /** Well-known fields get natural questions even without an override. */
 const KNOWN: Record<string, Partial<Question>> = {
-  age: { prompt: "How old are you?", type: "number", unit: "years", min: 0, max: 120 },
+  age: { title: "Age.", prompt: "How old are you?", type: "number", unit: "years", min: 0, max: 120 },
   sex: {
-    prompt: "What was your sex at birth?", type: "choice",
+    title: "Sex at birth.", prompt: "What was your sex at birth?", type: "choice",
     options: [{ value: "female", label: "Female" }, { value: "male", label: "Male" }, { value: "intersex", label: "Intersex" }, { value: "prefer_not", label: "Prefer not to say" }],
   },
-  pregnant: { prompt: "Are you pregnant, breastfeeding, or planning a pregnancy soon?", type: "yes_no" },
-  bmi: { prompt: "What is your BMI, if you know it?", type: "number", min: 10, max: 80 },
+  pregnant: { title: "Pregnancy.", prompt: "Are you pregnant, breastfeeding, or planning a pregnancy soon?", type: "yes_no" },
+  bmi: { title: "BMI.", prompt: "What is your BMI, if you know it?", type: "number", min: 10, max: 80 },
 };
 
 function generated(field: string, rules: EligibilityRule[], tests: Criterion[]): Question {
@@ -135,16 +135,23 @@ function generated(field: string, rules: EligibilityRule[], tests: Criterion[]):
   const numeric = tests.some((t) => ["gte", "gt", "lte", "lt", "between"].includes(t.op)) || (values.length > 0 && values.every((v) => typeof v === "number"));
   const boolean = !numeric && values.length > 0 && values.every((v) => typeof v === "boolean");
   const help = rules.map((r) => r.description).join(" · ");
+  const title = headline(label.replace(/ per month$/, ""));
   if (known) return { key: field, required: true, help, ...known, prompt: known.prompt!, type: known.type! };
   if (numeric) {
     const counted = /(days|times|count|episodes|attacks)/.test(base);
     const prompt = counted ? `In a typical month, how many ${label.replace(/ per month$/, "")} do you have?` : screening ? `What was your most recent ${label}, if you know it?` : `What is your ${label}?`;
-    return { key: field, prompt, help, type: "number", unit: counted ? "days" : unit, required: !screening || counted, min: 0 };
+    return { key: field, title, prompt, help, type: "number", unit: counted ? "days" : unit, required: !screening || counted, min: 0 };
   }
-  if (boolean) return { key: field, prompt: `${capitalize(rules[0].description.replace(/\.$/, ""))}: does this apply to you?`, type: "yes_no", required: true };
+  if (boolean) return { key: field, title, prompt: `${capitalize(rules[0].description.replace(/\.$/, ""))}: does this apply to you?`, type: "yes_no", required: true };
   const options = [...new Set(values.map(String))].map((v) => ({ value: v, label: optionLabel(v) }));
   options.push({ value: "other", label: "Something else" });
-  return { key: field, prompt: `Which best describes your ${label}?`, help, type: "choice", options, required: true };
+  return { key: field, title, prompt: `Which best describes your ${label}?`, help, type: "choice", options, required: true };
+}
+
+/** A short headline: "migraine days" -> "Migraine days."; longer phrases get none. */
+function headline(text: string): string | undefined {
+  const t = text.trim().replace(/\.$/, "");
+  return t && t.length <= 26 ? `${capitalize(t)}.` : undefined;
 }
 
 /** The prescreen for a study: name first, then the study's questions, then site and contact. */
@@ -170,6 +177,7 @@ export function buildPrescreen(rules: EligibilityRule[], overrides: QuestionOver
       order: override?.position ?? rule.sortOrder,
       question: {
         key, type: "yes_no", required: true,
+        title: pregnancy ? KNOWN.pregnant.title : headline(rule.description),
         prompt: override?.prompt ?? (pregnancy ? KNOWN.pregnant.prompt! : rule.ruleType === "inclusion" ? `Does this describe you? ${rule.description}` : `Does this apply to you? ${rule.description}`),
         help: override?.help ?? undefined,
         criteria: [{ kind: rule.ruleType, label: rule.description, op: "eq", value: true, selfReported: true }],
@@ -198,17 +206,17 @@ export function buildPrescreen(rules: EligibilityRule[], overrides: QuestionOver
 
   const ordered = questions.sort((a, b) => a.order - b.order).map((q) => q.question);
   const first: Question[] = ordered.some((q) => q.key === "first_name") ? [] : [
-    { key: "first_name", prompt: "First, what should we call you?", type: "text", required: true },
+    { key: "first_name", title: "Your name.", prompt: "First, what should we call you?", type: "text", required: true },
   ];
   const last: Question[] = [];
   if (sites.length > 1 && !ordered.some((q) => q.key === PREFERRED_SITE)) {
     last.push({
-      key: PREFERRED_SITE, prompt: "Which location would be easier for you to visit?", type: "choice", required: true,
+      key: PREFERRED_SITE, title: "Location.", prompt: "Which location would be easier for you to visit?", type: "choice", required: true,
       options: [...sites.map((s) => ({ value: s.code, label: [s.name, s.city].filter(Boolean).join(", ") })), { value: "either", label: "Either is fine" }],
     });
   }
   last.push({
-    key: CONTACT_OPT_IN, type: "yes_no", required: true,
+    key: CONTACT_OPT_IN, type: "yes_no", required: true, title: "Texts from the team.",
     prompt: "Is it OK for the study team to text you at this number about the study?",
     help: "Reply STOP anytime to stop texts. We never share your number.",
   });

@@ -17,7 +17,7 @@ const knowledge = new ConsentFirstKnowledge();
 const assistant = new Assistant(knowledge);
 const channel = new ConsoleChannel(config.assistantName);
 assistant.addChannel(channel);
-const server = startWebServer(knowledge, new Forms(knowledge, assistant));
+const server = startWebServer(knowledge, new Forms(knowledge, assistant), assistant);
 
 const conversation = channel.conversation(handle);
 const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: consoleStyle.dim("you › ") });

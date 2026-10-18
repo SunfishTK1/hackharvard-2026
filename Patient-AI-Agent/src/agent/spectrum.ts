@@ -1,11 +1,13 @@
 // iMessage through Photon Spectrum. Cards are Spectrum `app` cards: a static layout (rendered
 // image + captions) that opens the mini-app URL full height in Photon's iMessage extension, which
 // works for anyone with iMessage. Cards are updated in place with the session from the send.
-import { app, edit, Spectrum, type Message, type Space } from "spectrum-ts";
-import { imessage } from "spectrum-ts/providers/imessage";
+import { app, edit, Spectrum, voice, type Message, type Space } from "spectrum-ts";
+import { customizedMiniApp, imessage } from "spectrum-ts/providers/imessage";
+import { config } from "../config.ts";
 import { cardImage } from "../cards/image.ts";
 import type { CardSpec } from "../cards/spec.ts";
 import type { CardRef, Thread } from "../store.ts";
+import { transcribe, voiceEnabled } from "../voice/xai.ts";
 import type { ChannelResolver, Conversation } from "./channel.ts";
 
 type App = Awaited<ReturnType<typeof connect>>;
@@ -13,20 +15,27 @@ const connect = (projectId: string, projectSecret: string) => Spectrum({ project
 
 const sessionOf = (message: Message | undefined) => (message as { miniAppCardSession?: unknown } | undefined)?.miniAppCardSession;
 
-function appCard(card: CardSpec) {
-  return app(card.url, {
-    layout: {
-      image: cardImage(card),
-      imageTitle: card.imageTitle,
-      caption: card.caption,
-      subcaption: card.subcaption,
-      summary: card.summary,
-    },
-  });
+/** Whether this person's cards open the Sage app's own extension (native Face ID). */
+const usesNativeApp = (handle: string) => config.native !== undefined && (config.native.handles.includes("*") || config.native.handles.includes(handle));
+
+function appCard(card: CardSpec, handle: string) {
+  const layout = {
+    image: cardImage(card),
+    // Spectrum needs a title with the image; iMessage draws it over the art's empty bottom strip.
+    imageTitle: card.imageTitle || card.subline,
+    caption: card.caption,
+    subcaption: card.subcaption,
+    summary: card.summary,
+  };
+  if (config.native && usesNativeApp(handle)) {
+    const { appName, teamId, extensionBundleId } = config.native;
+    return customizedMiniApp({ appName, teamId, extensionBundleId, url: card.url, layout });
+  }
+  return app(card.url, { layout });
 }
 
 export interface InboundHandler {
-  onInbound(conversation: Conversation, text: string, externalId: string): void;
+  onInbound(conversation: Conversation, text: string, externalId: string, options?: { voice?: boolean }): void;
 }
 
 export class SpectrumChannel implements ChannelResolver {
@@ -53,6 +62,18 @@ export class SpectrumChannel implements ChannelResolver {
       const content = message.content;
       // Card bubbles echoed back from the extension carry no new information for us.
       if (content.type === "app") continue;
+      if (content.type === "voice" && voiceEnabled()) {
+        // A voice message: xAI turns it into text, and Sage answers with a voice note.
+        const conversation = this.conversation(space, handle);
+        void content.read()
+          .then((audio) => transcribe(audio, content.mimeType))
+          .then(({ text }) => handler.onInbound(conversation, text || "[sent a voice message with no words in it]", message.id, { voice: true }))
+          .catch((error) => {
+            console.error("spectrum: voice message not transcribed", error instanceof Error ? error.message : error);
+            handler.onInbound(conversation, "[sent a voice message we couldn't hear]", message.id);
+          });
+        continue;
+      }
       const text = content.type === "text" ? content.text : `[sent ${content.type === "attachment" ? "an attachment" : `a ${content.type}`}]`;
       handler.onInbound(this.conversation(space, handle), text, message.id);
     }
@@ -73,8 +94,14 @@ export class SpectrumChannel implements ChannelResolver {
         const sent = await space.send(text);
         return { externalId: sent?.id };
       },
+      sendVoice: async (audio) => {
+        // The audio is MP3, so Spectrum converts it to m4a, but it uploads under this name, and
+        // iMessage goes by the extension: an ".mp3" name on m4a data plays as an empty 00:00 bubble.
+        const sent = await space.send(voice(audio, { mimeType: "audio/mpeg", name: "Sage.m4a" }));
+        return { externalId: sent?.id };
+      },
       sendCard: async (card) => {
-        const sent = await space.send(appCard(card));
+        const sent = await space.send(appCard(card, handle));
         if (sent) this.sent.set(sent.id, sent);
         return { messageId: sent?.id, session: sessionOf(sent) };
       },
@@ -82,7 +109,7 @@ export class SpectrumChannel implements ChannelResolver {
         try {
           const target = await this.cardMessage(space, ref);
           if (!target) return undefined;
-          await space.send(edit(appCard(card), target));
+          await space.send(edit(appCard(card, handle), target));
           return { messageId: target.id, session: sessionOf(target) ?? ref.session };
         } catch (error) {
           console.error("spectrum: card update failed", error instanceof Error ? error.message : error);

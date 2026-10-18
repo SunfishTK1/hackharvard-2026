@@ -69,6 +69,8 @@ export function goalsFor(phase: Phase, ctx: PlaybookContext): GoalTemplate[] {
           ? goal("daily_check_in", "Daily check-in",
             "When a check-in is due, send the check-in card (or record answers they text with record_observation). It takes about a minute.", 10, "trial_knowledge")
           : goal("daily_check_in", "Daily check-in", "No measures are configured for this study; skip.", 10, "trial_knowledge"),
+        goal("study_hub", "Keep their study at hand",
+          "When they ask how they're doing, what's next, about visits, or want to report a symptom or take a break, send the study card (their progress, today's tasks, readings, visits, symptom reporting, pause or stop).", 15),
         goal("safety_watch", "Watch for side effects",
           "If they mention any new or worse symptom, report it with report_symptom (the study team gets an alert) and reassure them the team will follow up.", 20),
         goal("adherence_support", "Support dose adherence",

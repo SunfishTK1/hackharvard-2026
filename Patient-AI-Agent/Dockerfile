@@ -1,8 +1,9 @@
 FROM node:24-slim
 ENV NODE_ENV=production
 WORKDIR /app
-# The slim image has no fonts; the card renderer (resvg) needs them for text.
-RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberation \
+# The slim image has no fonts; the card renderer (resvg) needs them for text. ffmpeg converts
+# iMessage voice notes (CAF) for transcription, and Spectrum uses it to send Sage's voice notes.
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-liberation ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./

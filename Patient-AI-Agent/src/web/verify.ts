@@ -1,8 +1,10 @@
-// Identity checks before sensitive actions (signing consent, opening documents).
-// Preferred: a WebAuthn passkey, which on iPhone means Face ID. The first time, the person creates
-// a passkey (one Face ID scan); after that each check is one Face ID scan. Where the browser can't
-// do passkeys (some in-app web views), the fallback is typing their full name, and the method is
-// recorded either way.
+// Identity checks before sensitive actions (signing consent, opening documents). Three ways:
+// - In the Sage iOS app's Messages extension: native Face ID. A Secure Enclave key that only
+//   Face ID unlocks signs a one-time challenge, and the server checks the signature.
+// - In a browser with passkeys (Safari): a WebAuthn passkey, which on iPhone also means Face ID.
+// - Elsewhere (Photon's web view can't do either): typing their full name.
+// The method is recorded with the verification either way.
+import { createHash, createPublicKey, randomBytes, verify as verifySignature } from "node:crypto";
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -27,7 +29,8 @@ function uuidBytes(id: string): Uint8Array<ArrayBuffer> {
 
 async function passkeys(q: Query) {
   return q<{ id: string; credential_id: string; public_key: Buffer; counter: string; transports: string[] | null }>(
-    "select id, credential_id, public_key, counter, transports from assistant.passkeys order by created_at");
+    `select id, credential_id, public_key, counter, transports from assistant.passkeys
+     where device_type is distinct from 'secure_enclave_face_id' order by created_at`);
 }
 
 /** Step 1: WebAuthn options. Registers a passkey the first time, otherwise asks for the existing one. */
@@ -101,6 +104,61 @@ export async function verifyPasskey(
       `insert into assistant.verifications (person_id, form_id, action, method, passkey_id) values ($1, $2, $3, 'passkey', $4) returning id`,
       [personId, formId, action, passkeyId]);
     await store.audit(q, personId, null, "person", "identity_verified", { method: "passkey", action, form_id: formId }, meta);
+    return { verificationId: v.id };
+  });
+}
+
+/** Native step 1: a one-time challenge for the app's Face ID key to sign. */
+export function deviceKeyChallenge(formToken: string, personId: string, action: VerifyAction) {
+  const challenge = randomBytes(32).toString("base64url");
+  challenges.set(`device:${formToken}`, { challenge: `${action}:${challenge}`, mode: "authenticate", expires: Date.now() + CHALLENGE_TTL_MS });
+  // Names this person's key in the device keychain (one key per person per device).
+  const keyTag = createHash("sha256").update(`sage-device-key:${personId}`).digest("base64url").slice(0, 22);
+  return { challenge, keyTag };
+}
+
+/**
+ * Native step 2: checks the signature from the app's Secure Enclave key (P-256, usable only after
+ * Face ID) over the challenge, registering the key the first time it's seen for this person.
+ */
+export async function verifyDeviceKey(
+  formToken: string, personId: string, formId: string, action: VerifyAction,
+  proof: { challenge?: unknown; publicKey?: unknown; signature?: unknown }, meta: RequestMeta,
+): Promise<{ verificationId: string } | { error: string }> {
+  const pending = challenges.get(`device:${formToken}`);
+  challenges.delete(`device:${formToken}`);
+  if (!pending || pending.expires < Date.now()) return { error: "That took too long. Try again." };
+  const [expectedAction, challenge] = pending.challenge.split(":");
+  if (expectedAction !== action || proof.challenge !== challenge) return { error: "That confirmation doesn't match. Try again." };
+  if (typeof proof.publicKey !== "string" || typeof proof.signature !== "string") return { error: "Face ID didn't return a signature." };
+
+  const spki = Buffer.from(proof.publicKey, "base64");
+  let valid = false;
+  try {
+    const key = createPublicKey({ key: spki, format: "der", type: "spki" });
+    valid = key.asymmetricKeyType === "ec" && verifySignature("sha256", Buffer.from(challenge, "utf8"), { key, dsaEncoding: "der" }, Buffer.from(proof.signature, "base64"));
+  } catch {
+    valid = false;
+  }
+  if (!valid) return { error: "Face ID couldn't be confirmed. Try again." };
+
+  const credentialId = `se:${createHash("sha256").update(spki).digest("base64url")}`;
+  return asPerson(personId, async (q) => {
+    const [existing] = await q<{ id: string }>("select id from assistant.passkeys where credential_id = $1", [credentialId]);
+    let passkeyId = existing?.id;
+    if (passkeyId) {
+      await q("update assistant.passkeys set last_used_at = now() where id = $1", [passkeyId]);
+    } else {
+      const [row] = await q<{ id: string }>(
+        `insert into assistant.passkeys (person_id, credential_id, public_key, device_type, backed_up)
+         values ($1, $2, $3, 'secure_enclave_face_id', false) returning id`, [personId, credentialId, spki]);
+      passkeyId = row.id;
+      await store.audit(q, personId, null, "person", "device_key_registered", { credential_id: credentialId }, meta);
+    }
+    const [v] = await q<{ id: string }>(
+      `insert into assistant.verifications (person_id, form_id, action, method, passkey_id) values ($1, $2, $3, 'passkey', $4) returning id`,
+      [personId, formId, action, passkeyId]);
+    await store.audit(q, personId, null, "person", "identity_verified", { method: "face_id_native", action, form_id: formId }, meta);
     return { verificationId: v.id };
   });
 }

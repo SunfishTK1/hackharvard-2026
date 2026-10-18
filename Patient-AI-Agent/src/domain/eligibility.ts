@@ -20,6 +20,8 @@ export interface Criterion {
 
 export interface Question {
   key: string;
+  /** A short headline for the mini-app ("Pregnancy."); the prompt is the question itself. */
+  title?: string;
   prompt: string;
   type: QuestionType;
   required: boolean;

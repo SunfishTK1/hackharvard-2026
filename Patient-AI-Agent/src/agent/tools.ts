@@ -6,7 +6,7 @@ import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { asPerson } from "../db.ts";
 import { isAsked, normalizeAnswer } from "../domain/eligibility.ts";
-import { PHASE_DEFINITIONS, PHASES, type CardKind } from "../domain/phases.ts";
+import { isStudyView, PHASE_DEFINITIONS, PHASES, type CardKind } from "../domain/phases.ts";
 import type { TrialKnowledge } from "../knowledge/types.ts";
 import * as store from "../store.ts";
 import type { Journey } from "./journey.ts";
@@ -23,7 +23,7 @@ export interface ToolContext {
   queueCard(kind: CardKind): Promise<string>;
 }
 
-const CARD_KINDS = ["prescreen", "info", "consent", "schedule", "checkin", "document"] as const;
+const CARD_KINDS = ["prescreen", "info", "consent", "schedule", "checkin", "document", "study", "symptom", "visit", "week"] as const;
 const SYMPTOM_SEVERITY = { mild: "low", moderate: "medium", severe: "high", life_threatening: "critical" } as const;
 const URGENCY = { routine: "low", soon: "medium", urgent: "high" } as const;
 
@@ -40,7 +40,7 @@ export function assistantTools(ctx: ToolContext) {
     betaZodTool({
       name: "send_card",
       description:
-        "Send a mini-app card that opens inside iMessage. Use it whenever the person needs to answer several questions, read and sign the consent form, pick an appointment, see the study overview, do their check-in, or open their documents.",
+        "Send a mini-app card that opens inside iMessage. Use it whenever the person needs to answer several questions, read and sign the consent form, pick an appointment, see the study overview, do their check-in, see their study (progress, tasks, readings, visits, report a symptom, pause or stop), or open their documents. During the study there are also cards that open one screen directly: symptom (tell the team how they feel), visit (a reminder for their next visit, with directions and calendar), week (their week so far: check-ins and readings).",
       inputSchema: z.object({
         kind: z.enum(CARD_KINDS).describe("Which mini-app"),
       }),
@@ -51,7 +51,8 @@ export function assistantTools(ctx: ToolContext) {
             return "There's no approved, active consent form for this study yet; the study team has been told. Let them know it's coming.";
           }
           if (kind === "schedule" && !(await ctx.knowledge.siteHours(e.trialId)).length) return "No visit times are set up; escalate instead.";
-          if (kind === "checkin" && !(await store.journeyFacts(q, e)).isEnrolled) return "They aren't enrolled yet, so there's no check-in.";
+          if ((kind === "checkin" || kind === "study" || isStudyView(kind)) && !(await store.journeyFacts(q, e)).isEnrolled) return `They aren't enrolled yet, so there's no ${kind === "checkin" ? "check-in" : `${kind} card`}.`;
+          if (kind === "visit" && !(await store.upcomingAppointment(q, e.id))) return "They have no upcoming visit booked, so there's nothing to remind them about.";
           if (kind === "document" && (await store.currentConsent(q, e))?.status !== "signed") return "They have no signed documents yet.";
           return undefined;
         });

@@ -154,6 +154,19 @@ test("after staff enroll them, the journey goes active and check-ins reach the p
   assert.equal(done.n, 2, "the check-in completed the open assessments");
 });
 
+test("the study page reads the participant's own progress, tasks and readings", async () => {
+  await asPerson(alicePerson, async (q) => {
+    const e = await store.engagement(q, aliceEngagement);
+    const overview = (await store.studyOverview(q, e))!;
+    assert.equal(overview.status, "active");
+    assert.equal(overview.studyDay, 1);
+    assert.ok(overview.assessmentsDone14d >= 2);
+    assert.ok((await store.todayAssessments(q, e)).some((a) => a.status === "completed"));
+    const readings = await store.recentReadings(q, e, 7);
+    assert.deepEqual(readings.map((r) => r.measureCode).sort(), ["acute_medication", "pain_score"]);
+  });
+});
+
 test("withdrawing is recorded on the platform", async () => {
   await asPerson(alicePerson, async (q) => {
     const e = await store.engagement(q, aliceEngagement);

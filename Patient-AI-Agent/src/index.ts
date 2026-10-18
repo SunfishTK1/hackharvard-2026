@@ -13,8 +13,8 @@ import { startWebServer } from "./web/server.ts";
 const knowledge = new ConsentFirstKnowledge();
 const router = new LineRouter();
 const assistant = new Assistant(knowledge, config.router.mode === "off" ? undefined : router);
-startWebServer(knowledge, new Forms(knowledge, assistant));
-startRouterServer(router);
+startWebServer(knowledge, new Forms(knowledge, assistant), assistant);
+startRouterServer(router, assistant);
 
 const { projectId, projectSecret } = config.spectrum;
 if (projectId && projectSecret) {

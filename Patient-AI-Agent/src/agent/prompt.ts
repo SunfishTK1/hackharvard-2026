@@ -28,6 +28,8 @@ export interface TurnContext {
   agentInstructions?: string;
   /** Studies recruiting now, for matching the person to the right one. */
   studies: StudyListing[];
+  /** Their last message was a voice message, so this reply goes out as a voice note. */
+  spoken: boolean;
 }
 
 const CARD_DESCRIPTIONS: Record<CardKind, string> = {
@@ -37,6 +39,10 @@ const CARD_DESCRIPTIONS: Record<CardKind, string> = {
   schedule: "Scheduler mini-app: pick a site, day and time for the screening visit; adds it to their calendar.",
   checkin: "Check-in mini-app: the study's questions (symptoms, doses, sleep...) in under a minute.",
   document: "Their documents (signed consent, visit details), opened after Face ID.",
+  study: "Their study home: week and progress, today's tasks, check-in streak and readings, visits, report a symptom (with an urgent path), and pause or stop.",
+  symptom: "Opens straight to reporting a symptom: what they feel and how bad, sent to the study team (urgent ones show call 911). Good when they mention feeling off.",
+  visit: "A reminder card for their next visit (only when one is booked): time, place, add to calendar, ask for a different time. Good the day before.",
+  week: "Their week so far: check-in streak and reading trends. A record, not an interpretation. Good for a weekly nudge or when they ask how they're doing.",
 };
 
 const when = (d: Date, timeZone: string) =>
@@ -64,7 +70,7 @@ export function systemPrompt(ctx: TurnContext): string {
     canSwitch
       ? `# Other studies recruiting now
 ${others.map((s) => `- ${s.code}: ${s.condition ?? ""} (${s.title})`).join("\n")}
-If what they're looking for matches one of these better (a condition, a flyer they saw), call choose_study before going further; their prescreen is per study.`
+If what they're looking for matches one of these better (a condition, a flyer they saw), call choose_study right away, without asking them to confirm; their prescreen is per study. If several match, pick the closest, say which one, and mention the other.`
       : "",
 
     `# Who you're talking to
@@ -114,7 +120,7 @@ When you send a card, write one short line saying what it is; the card appears r
 - Consent is always voluntary: never pressure, and accept "no" or "stop" immediately (change_phase to declined or withdrawn).
 - If you don't know an answer, say you'll check with the study team and call escalate.
 - Use tools silently; never mention tool names, ids or "the system".
-Now: ${when(ctx.now, ctx.timeZone)} (${ctx.timeZone}).`,
+${ctx.spoken ? `- They're talking to you with voice messages ("[voice]" marks one), and this reply is sent as a voice note in your voice: one or two short spoken sentences, no lists, links or emoji. To prescreen by voice, ask one question at a time and record each answer with record_answer; or send the prescreen card, where they can tap "Answer by voice" for a live conversation.\n` : ""}Now: ${when(ctx.now, ctx.timeZone)} (${ctx.timeZone}).`,
   ];
   return sections.map((s) => s.replace(/\n{2,}/g, "\n").trim()).filter(Boolean).join("\n\n");
 }

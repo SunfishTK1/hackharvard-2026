@@ -4,7 +4,7 @@
 
 It runs on the team's **consent-first platform** database (`clinical_trials`, built by the platform team) and adds one schema, `assistant`, beside it. Study content (studies, sites, arms, eligibility rules, measures, approved ICFs) comes from the platform; the assistant writes to the platform only through guarded functions, so the platform's rules (opt-in, approved and active ICF, lifecycle, value types) still apply to everything it does.
 
-Live: https://patient.hackharvard2026.velroi.com (mini-apps) · iMessage: the Photon 1.0 line, shared with Charles Sprint.
+Live: https://patient.hackharvard2026.velroi.com (mini-apps) · iMessage: the Photon 1.0 line (+1 415-605-6081), shared with Charles Sprint.
 
 ## How it works
 
@@ -27,9 +27,15 @@ Mini-app (web, /f/<token>) ──▶ Forms: validate, apply, update the card in 
 
 **Hand-off to the platform**: prequalification is the assistant's alone (the platform starts at the consent invitation). When the prescreen passes, or needs staff review, the assistant creates the platform participant (`consent_pending`) and contact (opted in only if the person agreed), presents the active ICF, and from then on mirrors every allowed message into `public.messages`, signs consent into `participant_consents`, files symptoms as `alerts`, writes check-ins as `observations` (completing open `scheduled_assessments`), and asks staff to `confirm_enrollment` after the visit is booked. Staff enrollment on the platform moves the assistant's journey to `active` on its own.
 
-**Mini-apps** (`public/`, `src/web/`): prescreen (one question per screen, generated from the platform's eligibility rules), study overview, e-consent (read, acknowledge key points, teach-back check graded on the server, agree, verify, sign), scheduler (per-site hours and time zones, `.ics` download), check-in (the study's measures), and documents (behind Face ID).
+**Mini-apps** (`public/`, `src/web/`): prescreen (one question per screen, generated from the platform's eligibility rules), study overview, e-consent (read, acknowledge key points, teach-back check graded on the server, agree, verify, sign), scheduler (per-site hours and time zones, `.ics` download), check-in (the study's measures), documents (behind Face ID), and, once enrolled, the study page: week and progress, today's tasks, next visit, report a symptom (urgent ones show call 911), visits, pause or stop. Three cards open one screen of it directly: `symptom`, `visit` (a reminder for the next visit) and `week` (check-ins and reading trends).
 
-**Face ID**: WebAuthn passkeys (`src/web/verify.ts`). The first verification creates a passkey; after that it's one Face ID scan. Where a browser can't do passkeys (some in-app web views), the person types their full name instead. The signature records which method was used, plus the fingerprint of exactly what they read.
+**Design**: the mini-apps follow the "Sage Mini-App Components" canvas (Claude Design), in Apple's style: a thin translucent top bar, an eyebrow over a big short headline, white pages with gray cards or gray pages with white cards, one accent (#0071E3), pill buttons, and Liquid Glass only on floating controls (the action bar and its ••• options menu, which sit outside `<main>` as siblings on one dock so neither blurs the other). Card images (`src/cards/image.ts`) are the canvas's black cards: study code, a pill badge, a headline with a period.
+
+**Voice** (`src/voice/`, `public/assets/voice.js`): "Answer by voice" in the prescreen and check-in runs on the Grok Voice Agent API. The server mints a five-minute client secret and writes the session (Sage's instructions, the questions, a `record_answer` tool); the page streams the microphone as 24 kHz PCM over `wss://api.x.ai/v1/realtime`, plays Grok's voice, and checks every answer Grok records with the server exactly like a tap. Nothing is saved until the person reviews and sends. The glass bar has mute, the primary action, and a menu (repeat the question, mute, use buttons, end). In the chat, a voice message is transcribed with xAI speech-to-text and Sage answers with a voice note (xAI text-to-speech, voice `eve`); ffmpeg converts iMessage audio. Set `XAI_API_KEY`.
+
+**Face ID** (`src/web/verify.ts`, `ios/`): Photon's iMessage extension can't use Face ID for our domain. In that view the card hands off to Safari: a one-time link opens `/v/<token>`, a passkey (Face ID) verifies the person, the server completes the action, and the card in Messages moves on by itself. Sage also has its own iOS app. Cards for people listed in `NATIVE_CARD_HANDLES` are sent as `customizedMiniApp` cards that open the Sage app's Messages extension, which shows the same mini-app pages with a native bridge: Face ID unlocks a Secure Enclave P-256 key (one per person, `.biometryCurrentSet`), the key signs a one-time server challenge, and the server verifies the signature and registers the key on first use. In Safari, WebAuthn passkeys do the same. Typing a full name is always the fallback. The signature records which method was used, plus the fingerprint of exactly what they read.
+
+**The Sage iOS app** (`ios/`, XcodeGen): `cd ios && xcodegen`, put your Team ID in `ios/Config/Local.xcconfig` (`SAGE_TEAM_ID = ABCDE12345`), open `Sage.xcodeproj`, and run the Sage scheme on your iPhone (the app's "Test Face ID" button checks Face ID end to end on the device). Then set `IMESSAGE_TEAM_ID` (same Team ID) and `NATIVE_CARD_HANDLES` (comma-separated phone numbers, or `*`) in the server's `.env` so those people's cards open the app.
 
 **Shared line**: Charles Sprint answers on the same Photon 1.0 line. TypeSafe's Jev model makes a typed choice per message (`patient_assistant` or `other`), sticky per chat so "yes" and "34" stay with whoever asked; Charles asks `POST http://patient-assistant:3011/route` before replying (`Charles-Sprint/src/line-router.ts`).
 
@@ -39,12 +45,12 @@ More detail: [docs/DESIGN.md](docs/DESIGN.md).
 
 **In iMessage**: text the Photon 1.0 line something like "Hi, I saw a flyer about a migraine study". (The line can only start conversations with registered numbers; anyone can text it first.)
 
-**In the terminal**, as any phone number, with cards printed as links you open in a browser:
+**In the terminal**, as any phone number, with cards printed as links you open in a browser. Use a scratch copy of the database, since a journey creates platform participants:
 
 ```sh
 npm install
 ssh -N -L 15432:localhost:5432 root@<server> &      # Postgres is firewalled; tunnel it
-export DATABASE_HOST=localhost:15432 DATABASE_NAME=assistant_demo
+export DATABASE_HOST=localhost:15432 DATABASE_NAME=assistant_scratch   # see "Databases"
 npm run chat -- +16175550123
 ```
 
@@ -56,16 +62,15 @@ npm run enroll -- +16175550123 --due-now     # --due-now opens today's check-in 
 
 ## Databases
 
-| Database | What it is |
-|---|---|
-| `clinical_trials` | The platform's real database. The `assistant` schema is applied; studies come from the platform team. Until a study is `active`, Sage replies that nothing is recruiting. |
-| `assistant_demo` | A copy of the platform schema with one synthetic study (`NORTHSTAR-DEMO`, `db/seeds/demo_study.sql`). The deployed assistant uses it until real studies arrive; set `DATABASE_NAME` to switch. |
+The deployed assistant runs on `clinical_trials`, the platform's database, with the platform team's five synthetic studies (STUDY-001 migraine, -002 type 2 diabetes, -003 depression, -004 solid tumors, -005 hypertension). New contacts start on the most recently updated active study (or `DEFAULT_STUDY`), and Sage switches to the one that matches what the person is looking for (`choose_study`). People who reach consent become real (synthetic) participants there, numbered after the study's own (`STUDY-001-P009`).
+
+For experiments, make a scratch copy on the server (as postgres): `createdb -T template0 assistant_scratch`, `pg_dump clinical_trials | psql assistant_scratch` (add `--schema-only` for an empty one), then `grant create on database assistant_scratch to app_owner` and, in it, `grant usage on schema public to patient_assistant`. `db/seeds/demo_study.sql` adds a synthetic study set up the way the platform requires (`NORTHSTAR-DEMO`, with presentation rows); it refuses to run on `clinical_trials`.
 
 ```sh
 npm run migrate -- status                       # assistant migrations (db/migrations), as developer
 npm run migrate                                 # apply; first time, the DB owner runs:
                                                 #   grant usage on schema public to patient_assistant;
-DATABASE_NAME=assistant_demo npm run seed -- db/seeds/demo_study.sql   # refuses to run on clinical_trials
+DATABASE_NAME=assistant_scratch npm run seed -- db/seeds/demo_study.sql
 ```
 
 Optional presentation tables let a study team tune what patients see without touching the platform: `assistant.study_profiles` (plain-language summary, time, pay, contact, agent instructions), `assistant.prescreen_questions` (reword a rule's question or add one), `assistant.consent_presentations` (the ICF's readable sections and teach-back questions; without it, a walkthrough is generated from the study record and labeled as such), `assistant.site_hours` (screening-visit hours; default weekdays 9-4).
@@ -75,7 +80,7 @@ Optional presentation tables let a study team tune what patients see without tou
 ```sh
 npm run typecheck
 npm test                                                      # domain: eligibility, rule mapping, phases, slots
-DATABASE_HOST=localhost:15432 DATABASE_NAME=assistant_scratch npm run test:db   # platform bridge, on a scratch copy
+DATABASE_HOST=localhost:15432 DATABASE_NAME=assistant_scratch npm run test:db   # platform bridge, on a scratch copy with demo_study.sql
 npm run dev                                                   # web + iMessage + router, restarts on change
 ```
 

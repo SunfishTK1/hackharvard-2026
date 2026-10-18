@@ -3,7 +3,7 @@
 // requires), assign an arm, activate them, and close the assistant's enrollment task. The
 // assistant picks the change up on their next message and moves to the active phase.
 //   npm run enroll -- +16175550190 [--staff demo-coordinator] [--arm NS210] [--no-activate] [--due-now]
-// --due-now also opens today's assessments for check-in (normally the platform's scheduler does).
+// --due-now also opens today's self-reported assessments for check-in (normally the platform's scheduler does).
 // Connects with STAFF_DATABASE_URL, or the developer DATABASE_URL in Clinical-DB/.env.
 import { parseArgs } from "node:util";
 import pg from "pg";
@@ -67,7 +67,9 @@ try {
     const { rowCount } = await client.query(
       `insert into public.scheduled_assessments (study_id, participant_id, measure_id, schedule_id, window_opens_at, due_at, window_closes_at)
        select s.study_id, $1, s.measure_id, s.id, now() - interval '1 hour', now(), now() + make_interval(mins => greatest(s.grace_period_minutes, 60))
-       from public.assessment_schedules s where s.study_id = $2 and s.is_active
+       from public.assessment_schedules s join public.measure_definitions m on m.id = s.measure_id
+       where s.study_id = $2 and s.is_active and s.frequency in ('daily', 'weekly') and m.data_type <> 'json'
+         and coalesce(m.source_type, 'patient_message') in ('patient_message', 'questionnaire', 'device')
        on conflict do nothing`, [e.participant_id, e.study_id]);
     due = rowCount ?? 0;
   }

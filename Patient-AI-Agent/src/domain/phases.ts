@@ -15,7 +15,12 @@ export const PHASES = [
 ] as const;
 export type Phase = (typeof PHASES)[number];
 
-export type CardKind = "prescreen" | "info" | "consent" | "schedule" | "checkin" | "document";
+export type CardKind = "prescreen" | "info" | "consent" | "schedule" | "checkin" | "document" | "study" | StudyView;
+
+/** Cards that open one screen of the study page: report a symptom, the next visit, the week so far. */
+export const STUDY_VIEWS = ["symptom", "visit", "week"] as const;
+export type StudyView = (typeof STUDY_VIEWS)[number];
+export const isStudyView = (kind: string): kind is StudyView => (STUDY_VIEWS as readonly string[]).includes(kind);
 
 export interface PhaseDefinition {
   label: string;
@@ -69,7 +74,7 @@ export const PHASE_DEFINITIONS: Record<Phase, PhaseDefinition> = {
       "Support them through the study: collect daily check-ins, catch side effects early, remind them about doses and visits, and keep them motivated.",
     guidance:
       "Keep check-ins quick (the check-in card takes a minute). Record any symptom they mention as a possible side effect and tell them the study team will follow up. For anything urgent or severe, tell them to call 911 or the study doctor right away. Never give medical advice or change doses.",
-    cards: ["checkin", "info", "document"],
+    cards: ["study", "checkin", "symptom", "visit", "week", "info", "document"],
     next: ["completed", "withdrawn"],
   },
   completed: {
