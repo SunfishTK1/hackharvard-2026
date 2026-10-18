@@ -112,9 +112,11 @@ async function target(q: Query, kind: ApprovalKind, targetId: string): Promise<T
 async function identity(q: Query, managerId: string, studyId: string, siteId: string): Promise<{ name: string; role: string } | undefined> {
   const [r] = await q<{ name: string; role: string }>(
     `select x.name, x.role from ops.manager_staff ms join ops.staff x on x.staff_user_id = ms.staff_user_id
+     join ops.managers m on m.id = ms.manager_id
      where ms.manager_id = $1 and x.study_id = $2 and (x.site_id is null or x.site_id = $3) and x.is_active
        and x.role in ('trial_manager', 'principal_investigator', 'coordinator')
-     order by x.role = 'trial_manager' desc, x.site_id is null limit 1`, [managerId, studyId, siteId]);
+     order by (x.name = m.display_name) desc, case x.role when 'principal_investigator' then 0 when 'trial_manager' then 1 else 2 end, x.site_id is null
+     limit 1`, [managerId, studyId, siteId]);
   return r;
 }
 
