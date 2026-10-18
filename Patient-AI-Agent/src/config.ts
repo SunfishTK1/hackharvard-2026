@@ -64,6 +64,11 @@ export const config = {
     return required("Anthropic API key", "ANTHROPIC_API_KEY", "Anthropic_API_Key");
   },
   model: pick("AGENT_MODEL") ?? "claude-haiku-5-5",
+  /**
+   * Demo reset code: a team member's phone (an active Trial Ops manager) that texts it to Sage starts
+   * over as someone new (assistant.reset_person). Set it only in the server's .env, never in the repo.
+   */
+  resetCode: pick("SAGE_RESET_CODE")?.trim().toLowerCase() || undefined,
   effort: (pick("AGENT_EFFORT") ?? "low") as "low" | "medium" | "high",
   /** xAI speech: Sage's voice (text to speech) and listening (speech to text). Voice is off without a key. */
   xai: {

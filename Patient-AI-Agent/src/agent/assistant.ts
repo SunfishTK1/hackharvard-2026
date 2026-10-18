@@ -89,6 +89,16 @@ export class Assistant {
   /** A text from a person. Safe to call concurrently; replays of the same message are ignored. */
   onInbound(conversation: Conversation, text: string, externalId: string, options: { voice?: boolean } = {}): void {
     void (async () => {
+      // The team's reset code (demos): a team phone starts over as someone new. Checked before the
+      // router and the model, and never stored as a message. Any other phone carries on normally.
+      if (config.resetCode && text.trim().toLowerCase() === config.resetCode) {
+        const [{ reset }] = await shared<{ reset: boolean }>("select assistant.reset_person($1) as reset", [conversation.handle]);
+        if (reset) {
+          console.log("assistant: a team phone reset its journey with the reset code");
+          await conversation.sendText("Reset. You're brand new to Sage: text anything to start over.");
+          return;
+        }
+      }
       if (this.router) {
         const decision = await this.router.route({ spaceId: conversation.externalSpaceId, handle: conversation.handle, text });
         if (decision.route !== "patient_assistant") return;
