@@ -17,6 +17,8 @@ const TO_OPS = /^\s*(\/)?(ops|trial ops)\s*[.!]?\s*$/i;
 export class OpsAgent {
   readonly core: OpsCore;
   private readonly channels: ChannelResolver[] = [];
+  /** Handles told this line is for study teams, so they're told once a day at most. */
+  private readonly turnedAway = new Map<string, number>();
 
   constructor(sage: Pick<Assistant, "nudge">, core?: OpsCore) {
     this.core = core ?? new OpsCore({ askSage: (handle, note) => sage.nudge(handle, note) });
@@ -34,19 +36,34 @@ export class OpsAgent {
     return TO_OPS.test(text) || m.chatMode === "ops";
   }
 
-  onInbound(conversation: Conversation, text: string, externalId: string): void {
+  /**
+   * A text to Trial Ops' own line (its own Photon project): every message is Trial Ops'. People who
+   * aren't linked managers are told who the line is for, once a day at most.
+   */
+  onLine(conversation: Conversation, text: string, externalId: string): void {
+    void (async () => {
+      const m = await store.managerByHandle(ops, conversation.handle);
+      if (m) return this.onInbound(conversation, text, externalId, { dedicated: true });
+      const last = this.turnedAway.get(conversation.handle) ?? 0;
+      if (Date.now() - last < 86_400_000) return;
+      this.turnedAway.set(conversation.handle, Date.now());
+      await conversation.sendText(`This is ${config.ops.name}, for clinical trial study teams. If you're on a study team, ask your administrator to add your number.`);
+    })().catch((error) => console.error("ops: line message failed", describeError(error)));
+  }
+
+  onInbound(conversation: Conversation, text: string, externalId: string, options: { dedicated?: boolean } = {}): void {
     void (async () => {
       const m = await store.managerByHandle(ops, conversation.handle);
       if (!m) return;
       await this.core.serial(m.id, async () => {
         const heard = await this.core.hear(m, text, { externalId, externalSpaceId: conversation.externalSpaceId });
         if (!heard) return; // a replay
-        if (TO_SAGE.test(text)) {
+        if (!options.dedicated && TO_SAGE.test(text)) {
           await store.setChatMode(ops, m.id, "sage");
           return this.say(conversation, heard.threadId, `Okay, this chat is with ${config.assistantName} now. Text "ops" to come back to ${config.ops.name}.`);
         }
         let note: string | undefined;
-        if (TO_OPS.test(text)) {
+        if (!options.dedicated && TO_OPS.test(text)) {
           await store.setChatMode(ops, m.id, "ops");
           note = `They switched this chat to ${config.ops.name}. Greet them in one line with today's most important item.`;
         }
@@ -63,15 +80,38 @@ export class OpsAgent {
     }).catch((error) => console.error("ops: notify failed", describeError(error)));
   }
 
-  /** An analysis finished: a turn that tells them, always with the report card. */
+  /**
+   * An analysis finished (or stopped): its live status card is updated in place, then a turn tells
+   * them the result. The turn goes into their conversation even when iMessage can't be reached, so
+   * the website shows it too; without a card to update, a new report card goes with it.
+   */
   private async analysisDone(done: AnalysisDone): Promise<void> {
     await this.core.serial(done.managerId, async () => {
       const m = await store.managerById(ops, done.managerId);
-      const found = m && (await this.conversationOf(m.id));
-      if (!m || !found) return;
-      const turn = await this.core.reply(m, found.threadId, { trailingNote: "An analysis just finished (see the update above). Tell them now." });
-      if (!turn.links.some((l) => l.view === "analysis")) turn.links.push(await this.core.link(m, "analysis", { id: done.id }));
-      await this.deliver(found.conversation, found.threadId, turn);
+      if (!m) return;
+      const thread = await store.ensureThread(ops, m.id);
+      const found = await this.conversationOf(m.id);
+      const [sent] = await ops<{ id: string; token: string; message_id: string; session: unknown }>(
+        `select id, token, message_id, session from ops.cards where manager_id = $1 and view = 'analysis' and params->>'id' = $2 and message_id is not null
+         order by created_at desc limit 1`, [m.id, done.id]);
+      let updated = false;
+      if (found && sent) {
+        const card = this.core.card({
+          cardId: sent.id, view: "analysis", params: { id: done.id }, title: done.title, url: `${config.publicUrl}/o/${sent.token}`,
+          text: { headline: done.title.length <= 34 ? done.title : `${done.title.slice(0, 33)}…`, subline: done.status === "done" ? "Summary, findings, charts and tables." : done.status === "cancelled" ? "Stopped." : "Couldn't finish.", badge: done.status === "done" ? "Report" : "Stopped" },
+        });
+        const ref = await found.conversation.updateCard({ messageId: sent.message_id, session: sent.session ?? undefined }, card).catch(() => undefined);
+        if (ref) {
+          await store.markCardSent(ops, sent.id, ref);
+          updated = true;
+        }
+      }
+      if (done.status === "cancelled") return; // they stopped it; the card says so
+      const turn = await this.core.reply(m, thread.id, {
+        trailingNote: updated ? "An analysis just finished (see the update above) and its card already shows the report. Tell them now; don't send another card for it." : "An analysis just finished (see the update above). Tell them now.",
+        ensureLink: updated ? undefined : { view: "analysis", params: { id: done.id } },
+      });
+      if (found) await this.deliver(found.conversation, found.threadId, turn);
     });
   }
 

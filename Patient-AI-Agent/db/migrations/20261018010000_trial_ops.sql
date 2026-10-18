@@ -159,7 +159,9 @@ create table ops.analyses (
   computer_id uuid references ops.computers (id),
   title text not null check (length(title) <= 120),
   request text not null check (length(request) <= 4000),
-  status text not null default 'running' check (status in ('running', 'done', 'failed')),
+  status text not null default 'running' check (status in ('running', 'done', 'failed', 'cancelled')),
+  -- Where a running analysis is, for the status screen.
+  phase text not null default 'starting' check (phase in ('starting', 'installing', 'loading', 'analyzing', 'saving', 'done', 'failed', 'cancelled')),
   summary text,
   findings jsonb not null default '[]',
   progress jsonb not null default '[]',

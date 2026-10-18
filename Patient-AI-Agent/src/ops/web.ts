@@ -8,9 +8,11 @@ import { clientIp, file, json, rateLimited, readJson } from "../web/server.ts";
 import { HttpError } from "../web/forms.ts";
 import type { OpsAgent } from "./agent.ts";
 import * as approvals from "./approvals.ts";
+import * as computer from "./computer.ts";
 import * as data from "./data.ts";
 import { ops } from "./db.ts";
 import * as store from "./store.ts";
+import { analysisFile, fileHeaders, ViewError, viewJson } from "./views.ts";
 
 const PAGE = join(import.meta.dirname, "..", "..", "public", "ops.html");
 const TOKEN = /^[A-Za-z0-9_-]{32,64}$/;
@@ -33,26 +35,24 @@ export function opsHttp(agent: OpsAgent | undefined, followUp: (handle: string, 
     };
 
     if (method === "GET") {
-      switch (action) {
-        case "": {
-          await store.audit(ops, manager.id, "card_opened", { card_id: card.id, view: card.view }, meta);
-          const studies = (await data.studies(ops)).map((s) => ({ code: s.code, short: s.short }));
-          return json(res, 200, { name: config.ops.name, manager: { name: manager.displayName }, view: card.view, params: card.params, studies });
-        }
-        case "home": return json(res, 200, await data.home(ops));
-        case "approvals": return json(res, 200, await data.approvals(ops, p("study")));
-        case "alerts": return json(res, 200, { alerts: await data.alerts(ops, { study: p("study"), status: p("status"), severity: p("severity") }) });
-        case "alert": return json(res, 200, need(await data.alertDetail(ops, uuid(p("id"))), "alert"));
-        case "study": return json(res, 200, need(await data.study(ops, need(p("code") ?? p("study"), "study")), "study"));
-        case "participant": return json(res, 200, need(await data.participant(ops, need(p("code"), "participant")), "participant"));
-        case "pipeline": return json(res, 200, await data.pipeline(ops, p("study")));
-        case "quality": return json(res, 200, await data.quality(ops, p("study")));
-        case "approval": return json(res, 200, { approval: need(await approvals.view(manager, uuid(p("id"))), "decision") });
-        case "analyses": return json(res, 200, { analyses: await data.analyses(ops, manager.id) });
-        case "analysis": return json(res, 200, need(await data.analysis(ops, manager.id, uuid(p("id")), fileUrl(token, p("id")!)), "analysis"));
-        case "analysis/file": return analysisFile(res, manager.id, uuid(p("id")), p("name") ?? "");
+      if (action === "") {
+        await store.audit(ops, manager.id, "card_opened", { card_id: card.id, view: card.view }, meta);
+        const studies = (await data.studies(ops)).map((s) => ({ code: s.code, short: s.short }));
+        return json(res, 200, { name: config.ops.name, manager: { name: manager.displayName }, view: card.view, params: card.params, studies });
       }
-      throw new HttpError(404, "Not found");
+      if (action === "approval") return json(res, 200, { approval: need(await approvals.view(manager, uuid(p("id"))), "decision") });
+      if (action === "analysis/file") {
+        const name = p("name") ?? "";
+        const f = need(await analysisFile(manager, uuid(p("id")), name), "file");
+        res.writeHead(200, fileHeaders(f.contentType, name, f.bytes.length));
+        return void res.end(f.bytes);
+      }
+      try {
+        return json(res, 200, await viewJson(manager, action, p, (id, name) => `/api/o/${token}/analysis/file?id=${id}&name=${encodeURIComponent(name)}`));
+      } catch (error) {
+        if (error instanceof ViewError) throw new HttpError(error.status, error.message);
+        throw error;
+      }
     }
     if (method !== "POST") throw new HttpError(405, "Method not allowed");
     const body = await readJson(req);
@@ -85,6 +85,13 @@ export function opsHttp(agent: OpsAgent | undefined, followUp: (handle: string, 
           await store.audit(ops, manager.id, "approval_handoff", { approval_id: a.id }, meta);
           return json(res, 200, { url: link });
         }
+        case "analysis/cancel": {
+          const id = uuid(String(body.id ?? ""));
+          if (!(await agent?.core.analyst?.cancel(manager.id, id))) throw new HttpError(409, "That analysis isn't running.");
+          return json(res, 200, { analysis: await viewJson(manager, "analysis", (k) => (k === "id" ? id : undefined), (aid, name) => `/api/o/${token}/analysis/file?id=${aid}&name=${encodeURIComponent(name)}`) });
+        }
+        case "computer/shutdown":
+          return json(res, 200, { ok: await computer.shutDown(manager.id), computer: await computer.status(manager.id) ?? null });
         case "approval/cancel":
           return json(res, 200, { approval: need(await approvals.cancel(manager, uuid(String(body.id ?? ""))), "decision") });
       }
@@ -111,23 +118,3 @@ function uuid(value: string | undefined): string {
   return value;
 }
 
-const fileUrl = (token: string, id: string) => (name: string) => `/api/o/${token}/analysis/file?id=${id}&name=${encodeURIComponent(name)}`;
-
-/** A chart or table from an analysis report: images inline, everything else as a download. */
-async function analysisFile(res: ServerResponse, managerId: string, id: string, name: string): Promise<void> {
-  const [f] = await ops<{ content_type: string; bytes: Buffer }>(
-    `select f.content_type, f.bytes from ops.analysis_files f join ops.analyses a on a.id = f.analysis_id
-     where f.analysis_id = $1 and f.name = $2 and a.manager_id = $3`, [id, name, managerId]);
-  if (!f) throw new HttpError(404, "No such file.");
-  const inline = /^image\/(png|jpeg)$/.test(f.content_type);
-  res.writeHead(200, {
-    "content-type": f.content_type,
-    "content-length": f.bytes.length,
-    "cache-control": "private, max-age=3600",
-    "x-content-type-options": "nosniff",
-    // SVG and HTML from the analysis computer are downloads, never rendered on this origin.
-    "content-disposition": `${inline ? "inline" : "attachment"}; filename="${name.replace(/[^A-Za-z0-9._-]/g, "_")}"`,
-    "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
-  });
-  res.end(f.bytes);
-}

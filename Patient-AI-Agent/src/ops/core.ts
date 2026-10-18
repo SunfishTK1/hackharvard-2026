@@ -84,7 +84,7 @@ export class OpsCore {
   }
 
   /** One turn: the model reads the chat and answers with text and up to two mini-app links. */
-  async reply(m: store.Manager, threadId: string, options: { trailingNote?: string; typing?: <T>(work: () => Promise<T>) => Promise<T> } = {}): Promise<OpsTurn> {
+  async reply(m: store.Manager, threadId: string, options: { trailingNote?: string; typing?: <T>(work: () => Promise<T>) => Promise<T>; ensureLink?: { view: View; params: Record<string, string> } } = {}): Promise<OpsTurn> {
     const typing = options.typing ?? (<T>(work: () => Promise<T>) => work());
     const links: OpsLink[] = [];
     const tools = opsTools({
@@ -97,6 +97,7 @@ export class OpsCore {
       askSage: (code, note) => this.askSage(code, note),
       ...(this.analyst ? {
         startAnalysis: (title: string, request: string) => this.analyst!.start(m.id, title, request),
+        stopAnalysis: (id: string) => this.analyst!.cancel(m.id, id),
         shutDownComputer: () => computer.shutDown(m.id),
         computerStatus: () => computer.status(m.id),
       } : {}),
@@ -117,8 +118,10 @@ export class OpsCore {
       console.error("ops: model failed", describeError(error));
       text = "Sorry, I'm having trouble reaching the data right now. Try again in a minute.";
     }
+    const must = options.ensureLink;
+    if (must && !links.some((l) => l.view === must.view && Object.entries(must.params).every(([k, v]) => l.params[k] === v))) links.push(await this.link(m, must.view, must.params));
     if (text) await store.addMessage(ops, { threadId, direction: "outbound", author: "agent", body: text });
-    for (const l of links) await store.addMessage(ops, { threadId, direction: "outbound", author: "agent", kind: "card", body: l.title });
+    for (const l of links) await store.addMessage(ops, { threadId, direction: "outbound", author: "agent", kind: "card", body: l.title, link: { view: l.view, title: l.title, url: l.url } });
     return { text, links };
   }
 

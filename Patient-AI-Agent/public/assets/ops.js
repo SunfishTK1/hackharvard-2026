@@ -542,17 +542,7 @@ const SCREENS = {
 
   async analysis(params, alive) {
     if (!params.id) return analysisList();
-    let a = await api(`analysis${qs({ id: params.id })}`);
-    if (!alive()) return;
-    show(...analysisReport(a));
-    // While it runs, check every 4 seconds and update in place.
-    while (a.status === "running") {
-      await new Promise((r) => setTimeout(r, 4000));
-      if (!alive()) return;
-      try { a = await api(`analysis${qs({ id: params.id })}`); } catch { continue; }
-      if (!alive()) return;
-      show({ quiet: a.status === "running" }, ...analysisReport(a));
-    }
+    await analysisScreen(params.id, alive);
   },
 
   async quality(params) {
@@ -596,11 +586,34 @@ const SCREENS = {
   },
 };
 
-// Analyses: heavy work on the cloud computer, started from chat --------------------------------
+// Analyses: heavy work on the cloud computer, started from chat. The same screen opens from an
+// iMessage card and in the ops website's side panel (an iframe about 420px wide), so it stays one
+// fluid column. While it runs: the four phases, a ticking timer, the machine, and the live log.
 
-const ANALYSIS_STATUS = { running: "Running", done: "Done", failed: "Failed" };
+const ANALYSIS_STATUS = { running: "Running", done: "Done", failed: "Failed", cancelled: "Stopped" };
+const PHASE_WORD = { starting: "Starting", installing: "Installing", loading: "Loading data", analyzing: "Analyzing", saving: "Saving", done: "Done", failed: "Failed", cancelled: "Stopped" };
+const PHASE_TEXT = {
+  starting: "Starting the computer.", installing: "Installing tools.", loading: "Loading the data.", analyzing: "Analyzing.",
+  saving: "Saving the report.", done: "Done.", failed: "It didn't finish.", cancelled: "Stopped.",
+};
+const COMPUTER_STATE = { starting: "Starting", ready: "Ready", stopped: "Stopped", deleted: "Deleted", failed: "Failed" };
+const STEP_STATE = { done: "done", active: "in progress", todo: "not started", failed: "failed" };
 const size = (n) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 const FILE_KIND = { image: "Image", table: "Table", document: "Document", other: "File" };
+/** 125 → "2:05"; 3725 → "1:02:05". */
+const stopwatch = (seconds) => {
+  const s = Math.max(0, Math.floor(seconds ?? 0));
+  const hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = String(s % 60).padStart(2, "0");
+  return hh ? `${hh}:${String(mm).padStart(2, "0")}:${ss}` : `${mm}:${ss}`;
+};
+/** 8 → "8 s"; 192 → "3 min 12 s"; 3900 → "1 h 5 min". */
+const duration = (seconds) => {
+  const s = Math.round(seconds ?? 0);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return s % 60 ? `${m} min ${s % 60} s` : `${m} min`;
+  return `${Math.floor(m / 60)} h ${m % 60} min`;
+};
 
 async function analysisList() {
   const { analyses } = await api("analyses");
@@ -609,41 +622,159 @@ async function analysisList() {
       "Bigger questions run on a cloud computer. Ask Trial Ops in Messages to start one."),
     analyses.length ? listCard(analyses.map((a) => row({
       onclick: () => go("analysis", { id: a.id }), title: a.title, sub: a.request,
-      meta: [tag(ANALYSIS_STATUS[a.status] ?? a.status, a.status === "running" ? "ink" : "muted"), a.finished ?? a.when, a.steps ? plural(a.steps, "step") : null],
+      meta: [
+        tag(a.status === "running" ? PHASE_WORD[a.phase] ?? "Running" : ANALYSIS_STATUS[a.status] ?? a.status, a.status === "running" ? "ink" : "muted"),
+        a.status === "running" && a.elapsedSeconds !== undefined ? `${duration(a.elapsedSeconds)} so far` : a.finished ?? a.when,
+        a.status !== "running" && a.elapsedSeconds ? `took ${duration(a.elapsedSeconds)}` : null,
+      ],
     })).map((r) => { r.querySelector("small")?.classList.add("clamp"); return r; }), "No analyses yet.") : null,
     bar(),
   ];
 }
 
-function analysisReport(a) {
-  const running = a.status === "running";
-  const paragraphs = (a.summary ?? "").split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
-  const images = a.files.filter((f) => f.kind === "image");
-  const others = a.files.filter((f) => f.kind !== "image");
-  const computer = a.computer ? `Cloud computer ${a.computer.status} · ${a.computer.cpu} CPU · ${a.computer.memory} GB` : null;
-  const progress = (list) => listCard(list.map((p) => row({ title: p.text, sub: p.when, bold: false })));
-  return [
-    h("div", { class: "header" }, h("span", { class: "eyebrow" }, "Analysis"), h("h1", { class: "title compact" }, a.title)),
-    h("p", { class: "quote request" }, a.request),
-    h("div", { class: "badges" },
-      tag(ANALYSIS_STATUS[a.status] ?? a.status, a.status === "running" ? "ink" : "muted"),
-      tag(a.finished ? `Finished ${a.finished}` : `Started ${a.when}`), a.steps ? tag(plural(a.steps, "step")) : null),
-    running ? [
-      h("div", { class: "working", role: "status" }, h("span", { class: "spinner", "aria-hidden": "true" }), h("span", {}, "Working on it. This page updates by itself.")),
-      sectionHead("So far"), progress(a.progress),
-    ] : null,
-    a.status === "failed" ? h("div", { class: "notice space" }, h("span", { html: icons.info, style: "display:contents" }),
-      h("span", { class: "text" }, h("b", {}, "It didn't finish."), h("span", {}, a.error ?? "Something went wrong on the cloud computer."))) : null,
-    paragraphs.length ? [sectionHead("Summary"), h("div", { class: "card prose" }, paragraphs.map((t) => h("p", {}, t)))] : null,
-    a.findings.length ? [sectionHead("Findings"), listCard(a.findings.map((t) => row({ lead: h("span", { class: "sev" }), title: t, bold: false, top: true })))] : null,
-    images.map((f) => h("a", { class: "figure", href: f.url, target: "_blank", rel: "noopener", "aria-label": `Open ${f.name}` },
-      h("img", { src: f.url, alt: f.name.replace(/[-_]/g, " ").replace(/\.\w+$/, ""), loading: "lazy" }))),
-    others.length ? [sectionHead("Files"), listCard(others.map((f) => h("a", { class: "list-row", href: f.url, download: f.name },
-      h("span", { class: "file-icon", html: icons.download }), h("span", { class: "text" }, h("span", { class: "label" }, f.name), h("small", {}, `${FILE_KIND[f.kind] ?? "File"} · ${size(f.size)}`)))))] : null,
-    !running && a.progress?.length ? h("details", { class: "how" }, h("summary", {}, "How it ran"), progress(a.progress)) : null,
-    computer ? h("p", { class: "note" }, computer) : null,
-    bar(),
-  ];
+/** The four phases: done (check), active (a calm pulse), to do, or failed. */
+function stepper(phases) {
+  return h("ol", { class: "stepper", "aria-label": "Progress" }, phases.map((p) => h("li", { class: `step ${p.state}`, "aria-current": p.state === "active" ? "step" : null },
+    p.state === "done" ? h("span", { class: "dot", "aria-hidden": "true", html: icons.check }) : h("span", { class: "dot", "aria-hidden": "true" }, p.state === "failed" ? "!" : null),
+    h("span", { class: "label" }, p.label),
+    h("span", { class: "sr-only" }, `, ${STEP_STATE[p.state] ?? p.state}`))));
+}
+
+/** The log: phase rows as labels, steps with their purpose, time and exit code; tap a step for its output. */
+function logList(log, open, rerender) {
+  const items = [];
+  log.forEach((e, i) => {
+    if (e.kind === "phase") {
+      items.push(h("div", { class: "log-phase" }, h("span", {}, e.text), h("small", {}, e.when)));
+      return;
+    }
+    const failed = e.exitCode !== undefined && e.exitCode !== null && e.exitCode !== 0;
+    const expanded = open.has(i);
+    const body = [
+      h("span", { class: failed ? "fail-dot" : "ok-dot", role: failed ? "img" : null, "aria-label": failed ? `Failed, exit code ${e.exitCode}` : null, "aria-hidden": failed ? null : "true" }),
+      h("span", { class: "text" }, h("span", { class: "label" }, e.text), h("small", {}, [e.when, failed ? `Exit code ${e.exitCode}` : null].filter(Boolean).join(" · "))),
+      e.seconds !== undefined && e.seconds !== null ? tag(duration(e.seconds)) : null,
+      e.detail ? h("span", { class: `chevron${expanded ? " open" : ""}`, html: icons.chevron }) : null,
+    ];
+    items.push(e.detail
+      ? h("button", { type: "button", class: "list-row log-step", "aria-expanded": String(expanded), onclick: () => { if (expanded) open.delete(i); else open.add(i); rerender(); } }, ...body)
+      : h("div", { class: "list-row log-step" }, ...body));
+    if (e.detail && expanded) items.push(h("pre", { class: "log-detail" }, e.detail));
+  });
+  return h("div", { class: "card list log" }, items.length ? items : h("p", { class: "empty" }, "Nothing has run yet."));
+}
+
+/** The analysis report: live while it runs (polled every 3 s, the timer ticking in between), then the result. */
+async function analysisScreen(id, alive) {
+  const ui = { open: new Set(), stopping: false, busy: false, message: "" };
+  let a = await api(`analysis${qs({ id })}`);
+  let fetchedAt = Date.now();
+  if (!alive()) return;
+  const elapsed = () => (a.elapsedSeconds ?? 0) + (a.status === "running" ? (Date.now() - fetchedAt) / 1000 : 0);
+
+  const stop = async () => {
+    ui.busy = true;
+    paint();
+    try {
+      a = (await api("analysis/cancel", { id })).analysis;
+      fetchedAt = Date.now();
+      ui.message = "";
+    } catch (e) {
+      ui.message = e.message;
+    }
+    ui.busy = false;
+    ui.stopping = false;
+    if (alive()) paint();
+  };
+  const shutdown = async () => {
+    ui.busy = true;
+    paint();
+    try {
+      const r = await api("computer/shutdown", {});
+      a = { ...a, computer: r.computer ?? a.computer };
+      ui.message = "The computer is shut down.";
+    } catch (e) {
+      ui.message = e.message;
+    }
+    ui.busy = false;
+    if (alive()) paint();
+  };
+
+  function dock() {
+    if (a.status === "running" && a.canCancel) {
+      return ui.stopping
+        ? actionbar(button("Keep running", () => { ui.stopping = false; paint(); }, { class: "plain" }),
+            button(ui.busy ? "Stopping…" : "Stop now", stop, { class: "grow ink", disabled: ui.busy }))
+        : bar(button("Stop analysis", () => { ui.stopping = true; paint(); }, { class: "soft grow" }));
+    }
+    if (a.status !== "running" && a.computer?.status === "ready") {
+      return bar(button(ui.busy ? "Shutting down…" : "Shut down computer", shutdown, { class: "soft grow", disabled: ui.busy }));
+    }
+    return bar();
+  }
+
+  function paint(first = false) {
+    const running = a.status === "running";
+    const paragraphs = (a.summary ?? "").split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+    const images = (a.files ?? []).filter((f) => f.kind === "image");
+    const others = (a.files ?? []).filter((f) => f.kind !== "image");
+    const c = a.computer;
+    const machine = c ? [`${COMPUTER_STATE[c.status] ?? cap(c.status)}`, `${c.cpu} CPU`, `${c.memory} GB`, c.status === "ready" || c.status === "starting" ? `stops after ${c.idleStopMinutes ?? 30} idle minutes` : null].filter(Boolean).join(" · ") : null;
+    const log = a.log ?? (a.progress ?? []).map((p) => ({ kind: "step", when: p.when, text: p.text }));
+    const ended = a.status === "failed" || a.status === "cancelled";
+    show({ quiet: !first },
+      h("div", { class: "header" }, h("span", { class: "eyebrow" }, "Analysis"), h("h1", { class: "title compact" }, a.title)),
+      h("p", { class: "quote request" }, a.request),
+      h("div", { class: `card run${running ? " live" : ""}`, role: running ? "status" : null },
+        h("div", { class: "run-head" },
+          running ? h("span", { class: "pulse", "aria-hidden": "true" }) : null,
+          h("b", {}, running ? PHASE_TEXT[a.phase] ?? "Working on it." : PHASE_TEXT[a.status === "done" ? "done" : a.status] ?? cap(a.status)),
+          h("span", { class: "grow" }),
+          running
+            ? h("b", { class: "elapsed", "aria-label": `${duration(elapsed())} so far` }, stopwatch(elapsed()))
+            : a.elapsedSeconds ? h("span", { class: "took" }, `Took ${duration(a.elapsedSeconds)}`) : null),
+        a.phases?.length ? stepper(a.phases) : null,
+        machine ? h("p", { class: "machine" }, h("span", { html: icons.gauge, style: "display:contents" }), `Cloud computer · ${machine}`) : null),
+      ui.message ? h("p", { class: "note", role: "status" }, ui.message) : null,
+      a.status === "failed" ? h("div", { class: "notice space" }, h("span", { html: icons.info, style: "display:contents" }),
+        h("span", { class: "text" }, h("b", {}, "It didn't finish."), h("span", {}, a.error ?? "Something went wrong on the cloud computer."))) : null,
+      a.status === "cancelled" ? h("div", { class: "notice space" }, h("span", { html: icons.info, style: "display:contents" }),
+        h("span", { class: "text" }, h("b", {}, "Stopped before it finished."), h("span", {}, "Nothing more runs, and nothing was saved."))) : null,
+      ended ? h("p", { class: "note" }, "Ask Trial Ops to rerun it.") : null,
+      running ? [sectionHead("Live log"), logList(log, ui.open, () => paint())] : null,
+      paragraphs.length ? [sectionHead("Summary"), h("div", { class: "card prose" }, paragraphs.map((t) => h("p", {}, t)))] : null,
+      a.findings?.length ? [sectionHead("Findings"), listCard(a.findings.map((t) => row({ lead: h("span", { class: "sev" }), title: t, bold: false, top: true })))] : null,
+      images.map((f) => h("a", { class: "figure", href: f.url, target: "_blank", rel: "noopener", "aria-label": `Open ${f.name}` },
+        h("img", { src: f.url, alt: f.name.replace(/[-_]/g, " ").replace(/\.\w+$/, ""), loading: "lazy" }))),
+      others.length ? [sectionHead("Files"), listCard(others.map((f) => h("a", { class: "list-row", href: f.url, download: f.name },
+        h("span", { class: "file-icon", html: icons.download }), h("span", { class: "text" }, h("span", { class: "label" }, f.name), h("small", {}, `${FILE_KIND[f.kind] ?? "File"} · ${size(f.size)}`)))))] : null,
+      !running && log.length ? (() => {
+        const how = h("details", { class: "how" }, h("summary", {}, ended ? "What ran" : "How it was done"), logList(log, ui.open, () => { paint(); }));
+        if (ui.howOpen) how.open = true;
+        how.addEventListener("toggle", () => { ui.howOpen = how.open; });
+        return how;
+      })() : null,
+      dock());
+  }
+
+  paint(true);
+  // The timer ticks every second between polls.
+  const tick = setInterval(() => {
+    if (!alive() || a.status !== "running") return clearInterval(tick);
+    const el = app.querySelector(".run .elapsed");
+    if (el) el.textContent = stopwatch(elapsed());
+  }, 1000);
+  while (a.status === "running") {
+    await new Promise((r) => setTimeout(r, 3000));
+    if (!alive()) return;
+    if (ui.busy) continue;
+    try {
+      a = await api(`analysis${qs({ id })}`);
+      fetchedAt = Date.now();
+    } catch { continue; }
+    if (!alive()) return;
+    paint();
+  }
 }
 
 function alertRow(a, { here } = {}) {

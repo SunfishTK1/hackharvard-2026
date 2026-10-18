@@ -124,6 +124,20 @@ export const config = {
     model: pick("OPS_MODEL") ?? "claude-opus-5-5",
     effort: (pick("OPS_EFFORT") ?? "low") as "low" | "medium" | "high",
     name: pick("OPS_NAME") ?? "Trial Ops",
+    /**
+     * Trial Ops' own Photon (Spectrum) project and line. Set, every text to that line goes to Trial
+     * Ops and Sage's line is Sage's alone; unset, managers reach Trial Ops on Sage's line ("ops").
+     */
+    spectrum: {
+      projectId: pick("TRIAL_OPS_SPECTRUM_PROJECT_ID"),
+      projectSecret: pick("TRIAL_OPS_SPECTRUM_PROJECT_SECRET"),
+    },
+    /** The internal API other apps (the ops website) use; off without a token. Never proxied publicly. */
+    apiPort: Number(pick("TRIAL_OPS_API_PORT") ?? 3012),
+    apiToken: pick("TRIAL_OPS_API_TOKEN"),
+    /** Where a web sign-in link may send the manager back to. */
+    webOrigins: (pick("TRIAL_OPS_WEB_ORIGINS") ?? "https://ops.hackharvard2026.velroi.com,http://localhost:3000,http://localhost:5173")
+      .split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
     /** The analyst that works on a Daytona computer for heavy analyses. */
     analystModel: pick("OPS_ANALYST_MODEL") ?? "claude-opus-5-5",
     analystEffort: (pick("OPS_ANALYST_EFFORT") ?? "medium") as "low" | "medium" | "high",

@@ -13,6 +13,8 @@ export interface OpsToolContext {
   manager: Manager;
   /** Starts a heavy analysis on the manager's Daytona computer; undefined when computers are off. */
   startAnalysis?(title: string, request: string): Promise<string>;
+  /** Stops a running analysis. */
+  stopAnalysis?(id: string): Promise<boolean>;
   /** Deletes the manager's computer now. */
   shutDownComputer?(): Promise<boolean>;
   computerStatus?(): Promise<unknown>;
@@ -147,7 +149,8 @@ export function opsTools(ctx: OpsToolContext) {
         run: async ({ title, request }) => {
           try {
             const id = await ctx.startAnalysis!(title, request);
-            return json({ started: title, analysis_id: id, next: "It runs on their computer for a few minutes. Tell them it's started; you'll be told when it's done and their report card goes out then." });
+            await ctx.queueCard("analysis", { id }, { headline: title, subline: "Running on your computer.", badge: "Running" });
+            return json({ started: title, analysis_id: id, next: "Its live status card goes out after your reply and updates itself when it's done. Tell them it's started and roughly what they'll get." });
           } catch (error) {
             return `Couldn't start it: ${(error as Error).message}`;
           }
@@ -161,6 +164,12 @@ export function opsTools(ctx: OpsToolContext) {
           if (analysis_id) return json((await data.analysis(ops, ctx.manager.id, analysis_id, (n) => n)) ?? { error: "No such analysis." });
           return json({ computer: await ctx.computerStatus?.(), analyses: await data.analyses(ops, ctx.manager.id, 10) });
         },
+      }),
+      betaZodTool({
+        name: "stop_analysis",
+        description: "Stop the analysis running on their computer (when they ask). The step in progress is cut off; nothing is reported.",
+        inputSchema: z.object({ analysis_id: z.string().uuid() }),
+        run: async ({ analysis_id }) => ((await ctx.stopAnalysis!(analysis_id)) ? "Stopped." : "That analysis isn't running."),
       }),
       betaZodTool({
         name: "shut_down_computer",

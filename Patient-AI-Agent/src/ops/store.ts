@@ -51,20 +51,21 @@ export async function threadFor(q: Query, managerId: string): Promise<Thread | u
   return r ? { id: r.id, externalSpaceId: r.external_space_id } : undefined;
 }
 
-export interface Entry { direction: "inbound" | "outbound"; author: "manager" | "agent" | "system"; kind: "text" | "card" | "event"; body: string; createdAt: Date }
+export interface Entry { id: string; direction: "inbound" | "outbound"; author: "manager" | "agent" | "system"; kind: "text" | "card" | "event"; body: string; link: { view: string; title: string; url: string } | null; createdAt: Date }
 
 /** Adds a message; returns its id, or undefined for a replay of an inbound message already seen. */
-export async function addMessage(q: Query, m: { threadId: string; direction: Entry["direction"]; author: Entry["author"]; kind?: Entry["kind"]; body: string; externalId?: string }): Promise<string | undefined> {
+export async function addMessage(q: Query, m: { threadId: string; direction: Entry["direction"]; author: Entry["author"]; kind?: Entry["kind"]; body: string; externalId?: string; link?: Entry["link"] }): Promise<string | undefined> {
   const [r] = await q<{ id: string }>(
-    `insert into ops.messages (thread_id, direction, author, kind, body, external_id) values ($1, $2, $3, $4, $5, $6)
-     on conflict (external_id) do nothing returning id`, [m.threadId, m.direction, m.author, m.kind ?? "text", m.body, m.externalId ?? null]);
+    `insert into ops.messages (thread_id, direction, author, kind, body, external_id, link) values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (external_id) do nothing returning id`, [m.threadId, m.direction, m.author, m.kind ?? "text", m.body, m.externalId ?? null, m.link ? JSON.stringify(m.link) : null]);
   return r?.id;
 }
 
-export async function transcript(q: Query, threadId: string, limit = 30): Promise<Entry[]> {
-  const rows = await q<{ direction: Entry["direction"]; author: Entry["author"]; kind: Entry["kind"]; body: string; created_at: Date }>(
-    "select direction, author, kind, body, created_at from ops.messages where thread_id = $1 order by created_at desc limit $2", [threadId, limit]);
-  return rows.reverse().map((r) => ({ direction: r.direction, author: r.author, kind: r.kind, body: r.body, createdAt: r.created_at }));
+export async function transcript(q: Query, threadId: string, limit = 30, after?: Date): Promise<Entry[]> {
+  const rows = await q<{ id: string; direction: Entry["direction"]; author: Entry["author"]; kind: Entry["kind"]; body: string; link: Entry["link"]; created_at: Date }>(
+    `select id, direction, author, kind, body, link, created_at from ops.messages
+     where thread_id = $1 and ($3::timestamptz is null or created_at > $3) order by created_at desc limit $2`, [threadId, limit, after ?? null]);
+  return rows.reverse().map((r) => ({ id: r.id, direction: r.direction, author: r.author, kind: r.kind, body: r.body, link: r.link, createdAt: r.created_at }));
 }
 
 // Cards -------------------------------------------------------------------------------------------

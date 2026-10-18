@@ -729,15 +729,34 @@ export async function studyCodes(q: Query): Promise<string[]> {
 
 // Analyses (Daytona) --------------------------------------------------------------------------------
 
-export interface AnalysisSummary { id: string; title: string; request: string; status: "running" | "done" | "failed"; when: string; finished: string | null; steps: number }
+type AnalysisStatus = "running" | "done" | "failed" | "cancelled";
+type AnalysisPhase = "starting" | "installing" | "loading" | "analyzing" | "saving" | "done" | "failed" | "cancelled";
+
+export interface AnalysisSummary {
+  id: string;
+  title: string;
+  request: string;
+  status: AnalysisStatus;
+  phase: AnalysisPhase;
+  when: string;
+  finished: string | null;
+  steps: number;
+  elapsedSeconds: number;
+}
 
 export interface AnalysisReport extends AnalysisSummary {
   summary: string | null;
   findings: string[];
   files: { name: string; kind: "image" | "table" | "document" | "other"; size: number; url: string }[];
   error: string | null;
+  /** The status screen's stepper: Computer, Data, Analysis, Report. */
+  phases: { key: "computer" | "data" | "analysis" | "report"; label: string; state: "done" | "active" | "todo" | "failed" }[];
+  /** Everything that happened, newest last: phase lines and each step with its timing and output. */
+  log: { at: string; when: string; kind: "phase" | "step"; text: string; running?: boolean; exitCode?: number; seconds?: number; detail?: string }[];
+  /** Kept for older clients: the log as plain lines. */
   progress: { when: string; text: string }[];
-  computer: { status: string; cpu: number; memory: number } | null;
+  computer: { status: string; cpu: number; memory: number; idleStopMinutes: number } | null;
+  canCancel: boolean;
 }
 
 const KIND: Record<string, AnalysisReport["files"][number]["kind"]> = {
@@ -745,26 +764,52 @@ const KIND: Record<string, AnalysisReport["files"][number]["kind"]> = {
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "table", "application/pdf": "document", "text/markdown; charset=utf-8": "document",
   "text/plain; charset=utf-8": "document", "text/html; charset=utf-8": "document",
 };
+const PHASE_STEP: Record<AnalysisPhase, number> = { starting: 0, installing: 0, loading: 1, analyzing: 2, saving: 3, done: 4, failed: -1, cancelled: -1 };
+const STEPS = [["computer", "Computer"], ["data", "Data"], ["analysis", "Analysis"], ["report", "Report"]] as const;
+const seconds = (from: Date, to: Date | null) => Math.max(0, Math.round(((to ?? new Date()).getTime() - new Date(from).getTime()) / 1000));
+
+/** The stepper: where it is, or (failed/stopped) where it stopped. */
+function phases(phase: AnalysisPhase, reached: number): AnalysisReport["phases"] {
+  const at = PHASE_STEP[phase];
+  return STEPS.map(([key, label], i) => ({
+    key, label,
+    state: at === 4 || i < at ? "done" : i === at ? "active" : at === -1 ? (i < reached ? "done" : i === reached ? "failed" : "todo") : "todo",
+  }));
+}
 
 export async function analyses(q: Query, managerId: string, limit = 20): Promise<AnalysisSummary[]> {
-  const rows = await q<{ id: string; title: string; request: string; status: AnalysisSummary["status"]; created_at: Date; finished_at: Date | null; steps: number }>(
-    "select id, title, request, status, created_at, finished_at, steps from ops.analyses where manager_id = $1 order by created_at desc limit $2", [managerId, limit]);
-  return rows.map((r) => ({ id: r.id, title: r.title, request: r.request, status: r.status, when: when(r.created_at), finished: r.finished_at ? when(r.finished_at) : null, steps: r.steps }));
+  const rows = await q<{ id: string; title: string; request: string; status: AnalysisStatus; phase: AnalysisPhase; created_at: Date; finished_at: Date | null; steps: number }>(
+    "select id, title, request, status, phase, created_at, finished_at, steps from ops.analyses where manager_id = $1 order by created_at desc limit $2", [managerId, limit]);
+  return rows.map((r) => ({
+    id: r.id, title: r.title, request: r.request, status: r.status, phase: r.phase, when: when(r.created_at), finished: r.finished_at ? when(r.finished_at) : null,
+    steps: r.steps, elapsedSeconds: seconds(r.created_at, r.finished_at),
+  }));
 }
 
 export async function analysis(q: Query, managerId: string, id: string, fileUrl: (name: string) => string): Promise<AnalysisReport | undefined> {
-  const [a] = await q<{ id: string; title: string; request: string; status: AnalysisSummary["status"]; created_at: Date; finished_at: Date | null; steps: number; summary: string | null; findings: string[]; error: string | null; progress: { at: string; text: string }[]; computer_status: string | null; cpu: number | null; memory: number | null }>(
-    `select a.id, a.title, a.request, a.status, a.created_at, a.finished_at, a.steps, a.summary, a.findings, a.error, a.progress,
+  const [a] = await q<{ id: string; title: string; request: string; status: AnalysisStatus; phase: AnalysisPhase; created_at: Date; finished_at: Date | null; steps: number; summary: string | null; findings: string[]; error: string | null; progress: { at: string; kind?: "phase" | "step"; text: string; running?: boolean; exitCode?: number; seconds?: number; detail?: string }[]; computer_status: string | null; cpu: number | null; memory: number | null }>(
+    `select a.id, a.title, a.request, a.status, a.phase, a.created_at, a.finished_at, a.steps, a.summary, a.findings, a.error, a.progress,
             c.status computer_status, c.cpu, c.memory
      from ops.analyses a left join ops.computers c on c.id = a.computer_id where a.id = $1 and a.manager_id = $2`, [id, managerId]);
   if (!a) return undefined;
   const files = await q<{ name: string; content_type: string; size: number }>(
     "select name, content_type, octet_length(bytes) size from ops.analysis_files where analysis_id = $1 order by (content_type like 'image/%') desc, name", [id]);
+  const log = (a.progress ?? []).map((e) => ({
+    at: e.at, when: when(e.at), kind: e.kind ?? "phase" as const, text: e.text,
+    ...(e.running ? { running: true } : {}), ...(e.exitCode !== undefined ? { exitCode: e.exitCode } : {}),
+    ...(e.seconds !== undefined ? { seconds: Number(e.seconds) } : {}), ...(e.detail ? { detail: e.detail } : {}),
+  }));
+  // How far it got before failing or being stopped: the furthest phase its log reached.
+  const reached = log.some((e) => e.kind === "step") ? 2 : log.some((e) => /^Loaded|Loading/.test(e.text)) ? 1 : 0;
   return {
-    id: a.id, title: a.title, request: a.request, status: a.status, when: when(a.created_at), finished: a.finished_at ? when(a.finished_at) : null, steps: a.steps,
+    id: a.id, title: a.title, request: a.request, status: a.status, phase: a.phase, when: when(a.created_at), finished: a.finished_at ? when(a.finished_at) : null,
+    steps: a.steps, elapsedSeconds: seconds(a.created_at, a.finished_at),
     summary: a.summary, findings: a.findings ?? [], error: a.error,
     files: files.map((f) => ({ name: f.name, kind: KIND[f.content_type] ?? "other", size: f.size, url: fileUrl(f.name) })),
-    progress: (a.progress ?? []).map((p) => ({ when: when(p.at), text: p.text })),
-    computer: a.computer_status ? { status: a.computer_status, cpu: a.cpu ?? 0, memory: a.memory ?? 0 } : null,
+    phases: phases(a.phase, reached),
+    log,
+    progress: log.map((e) => ({ when: e.when, text: e.text })),
+    computer: a.computer_status ? { status: a.computer_status, cpu: a.cpu ?? 0, memory: a.memory ?? 0, idleStopMinutes: 30 } : null,
+    canCancel: a.status === "running",
   };
 }
