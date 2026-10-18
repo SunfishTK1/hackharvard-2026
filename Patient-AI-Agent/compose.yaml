@@ -17,6 +17,8 @@ services:
       TRIAL_OPS_API_PORT: "3012"
       # Consent-signed emails go to this address instead of the investigators' on file (synthetic staff).
       PI_EMAIL: bl108@wellesley.edu
+      # Verified in Resend (DNS on Cloudflare: resend._domainkey and send.hackharvard).
+      EMAIL_FROM: Sage <sage@hackharvard.velroi.com>
       PUBLIC_URL: https://patient.hackharvard2026.velroi.com
       TIMEZONE: America/New_York
       # Used only if the TypeSafe key is missing: then new chats start when they match this.
