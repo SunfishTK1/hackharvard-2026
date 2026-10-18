@@ -1,7 +1,7 @@
 // Mini-app views. The URL token picks the form; the server says which kind it is. Layout follows the
 // "Sage Mini-App Components" design canvas: a thin top bar, an eyebrow over a big short headline,
 // white pages with gray cards or gray pages with white cards, and one glass action bar.
-import { actionbar, api, button, h, icons, optionsMenu, roundButton } from "./ui.js?v=9";
+import { actionbar, api, button, h, icons, optionsMenu, roundButton } from "./ui.js?v=10";
 import { voiceScreen } from "./voice.js?v=9";
 
 const app = document.getElementById("app");

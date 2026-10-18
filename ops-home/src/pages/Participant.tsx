@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { ParticipantData, SeriesChart } from "../types";
-import { AGENTIC_URL, BLUE, Crumbs, Footer, INK, MUTED, PANEL, Source, Stale, Status, Tiles, pillLink, useApi, useSources } from "../ui";
+import { AskButton, BLUE, Crumbs, Footer, INK, MUTED, PANEL, Source, Stale, Status, Tiles, pillLink, useApi, useSources } from "../ui";
 
 const card: CSSProperties = { background: "#FFFFFF", borderRadius: 24, padding: 28, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 };
 const eyebrow: CSSProperties = { fontSize: 15, fontWeight: 600, color: MUTED };
@@ -72,8 +72,8 @@ export default function Participant({ code }: { code: string }) {
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <a href={`/reported/${encodeURIComponent(data.code)}`} style={pillLink(false)}>Day-by-day data</a>
-            <a href={AGENTIC_URL} style={pillLink(false)}>Ask agent</a>
-            <a href={AGENTIC_URL} style={pillLink(true)}>Draft follow-up</a>
+            <AskButton question={`Tell me about ${data.code}. What's waiting on them, and with whom?`} style={pillLink(false)}>Ask Trial Ops</AskButton>
+            <AskButton question={`Draft a follow-up message for ${data.code}.`} style={pillLink(true)}>Draft follow-up</AskButton>
           </div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 24px", fontSize: 15 }}>
@@ -90,7 +90,7 @@ export default function Participant({ code }: { code: string }) {
               <div style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-0.015em" }}>{data.banner.title}</div>
               <div style={{ fontSize: 15, color: "rgba(245,245,247,0.72)" }}>{data.banner.body}</div>
             </div>
-            <a href={AGENTIC_URL} style={{ ...pillLink(true) }}>Draft follow-up</a>
+            <AskButton question={`Draft a follow-up for ${data.code}: ${data.banner.title}`} style={pillLink(true)}>Draft follow-up</AskButton>
           </div>
         </section>
       )}
@@ -175,7 +175,7 @@ export default function Participant({ code }: { code: string }) {
                   ))}
                 </dl>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
-                  <a href={AGENTIC_URL} style={{ ...pillLink(true), minHeight: 36, padding: "0 14px", fontSize: 14 }}>Draft follow-up</a>
+                  <AskButton question={`Draft a follow-up for ${data.code} about this alert: "${data.alert.title}". ${data.alert.reason}`} style={{ ...pillLink(true), minHeight: 36, padding: "0 14px", fontSize: 14 }}>Draft follow-up</AskButton>
                   <a href="/alerts" style={{ ...pillLink(false), minHeight: 36, padding: "0 14px", fontSize: 14 }}>Alert queue</a>
                 </div>
                 <Source show={showSources}>public.alerts ⋈ alert_rules · acknowledged_by / resolved_by → private.staff_users</Source>

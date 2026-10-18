@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { parseEnv } from "node:util";
 import pg from "pg";
 import { loadHome, type Queryable } from "./home.ts";
+import { agentProxy } from "./agent-proxy.ts";
 import { loadRedactor } from "./redact.ts";
 import { loadAlerts, loadCalendar, loadJourneys, loadParticipant, loadPriorities, loadReported, loadSite, loadStudies, loadStudy } from "./pages.ts";
 
@@ -31,6 +32,9 @@ const pool = databaseUrl
     })
   : null;
 pool?.on("error", (err) => console.error("pg pool error:", err.message));
+
+// Agentic mode: /api/agent/* goes to the Trial Ops API, server to server (see agent-proxy.ts).
+const agent = agentProxy(env);
 
 const cache = new Map<string, { at: number; body: string }>();
 const inFlight = new Map<string, Promise<string>>();
@@ -102,10 +106,13 @@ const MIME_TYPES: Record<string, string> = {
 
 const server = createServer(async (req, res) => {
   const urlPath = (req.url ?? "/").split("?")[0] || "/";
+  const search = (req.url ?? "").includes("?") ? (req.url ?? "").slice((req.url ?? "").indexOf("?")) : "";
+
+  if (await agent(req, res, urlPath, search)) return;
 
   if (urlPath === "/healthz") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, database: Boolean(pool) }));
+    res.end(JSON.stringify({ ok: true, database: Boolean(pool), agent: Boolean(env.TRIAL_OPS_API_TOKEN) }));
     return;
   }
 
@@ -148,5 +155,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`ops-home listening on http://0.0.0.0:${PORT} (database ${pool ? "configured" : "not configured"})`);
+  console.log(`ops-home listening on http://0.0.0.0:${PORT} (database ${pool ? "configured" : "not configured"}, agentic mode ${env.TRIAL_OPS_API_TOKEN ? "connected" : "not connected"})`);
 });

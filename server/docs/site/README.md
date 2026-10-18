@@ -11,11 +11,11 @@ Find this guide at **https://hackharvard2026.velroi.com**, at `/opt/apps/README.
 | Server guide | https://hackharvard2026.velroi.com | `docs` | This page |
 | iMessage agent | https://apps.hackharvard2026.velroi.com | `photon-demo` | Photon 2.0 iMessage agent (Claude Haiku 5.5). Hosts the mini-apps it builds at `/m/<id>/`. |
 | Clinical trial database | `db.hackharvard2026.velroi.com:5432` (TLS) | `clinical-db` | PostgreSQL 18 + pgvector for the clinical trial project. Read-only browser: https://db.hackharvard2026.velroi.com |
-| Patient assistant | https://patient.hackharvard2026.velroi.com | `patient-assistant` | "Sage", the iMessage study assistant (Patient-AI-Agent): prescreen, e-consent with Face ID, scheduling and check-ins as in-chat mini-apps, on the clinical trial database's `assistant` schema. Shares the Photon 1.0 line with Charles Sprint. |
+| Patient assistant | https://patient.hackharvard2026.velroi.com | `patient-assistant` | "Sage", the iMessage study assistant (Patient-AI-Agent): prescreen, e-consent with Face ID, scheduling and check-ins as in-chat mini-apps, on the clinical trial database's `assistant` schema. Shares the Photon 1.0 line with Charles Sprint. Also runs **Trial Ops**, the trial managers' iMessage agent on its own Photon project ("Trial Ops"), with mini-apps under `/o/`, Face ID decisions, and analyses on Daytona cloud computers. Internal API for other apps on `patient-assistant:3012` (Docker network only). |
 | DB Browser | https://dbview.hackharvard2026.velroi.com | `db-browser` | Read-only viewer of every table in the clinical trial database, with foreign-key links. Shared team password. |
 | Trial manager view | https://trial-manager.hackharvard2026.velroi.com | `clinical-trial-manager-view` | Web UI for trial managers |
 | Server load view | https://load.hackharvard2026.velroi.com | `server-load-view` | Live server load dashboard |
-| Trial ops home | https://ops.hackharvard2026.velroi.com | `ops-home` | Portfolio home for trial managers, live from the clinical trials database |
+| Trial ops home | https://ops.hackharvard2026.velroi.com | `ops-home` | Portfolio home for trial managers, live from the clinical trials database. Its Agentic mode is the Trial Ops agent (sign in with a link texted to your phone). |
 | Proxy | ports 80 and 443 | `proxy` | Caddy: routes each address to its app and handles HTTPS |
 
 Each app folder has its own README with app-specific details.

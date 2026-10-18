@@ -3,7 +3,8 @@
 import type { CardKind } from "../domain/phases.ts";
 
 export interface CardSpec {
-  kind: CardKind;
+  /** A Sage mini-app, or a Trial Ops view ("ops:home"). */
+  kind: CardKind | `ops:${string}`;
   url: string;
   /** Large text drawn into the card image. */
   headline: string;

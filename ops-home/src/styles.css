@@ -143,6 +143,26 @@ a.row:hover { color: #1D1D1F; }
 .cal-cell:focus-visible { outline: 2px solid #0071E3; outline-offset: 2px; }
 
 .link-button { border: 0; background: none; padding: 0; font: inherit; color: #0066CC; cursor: pointer; }
+
+/* "Ask Trial Ops": a quiet link on actionable items that hands the question to Agentic mode. A row's
+   own link stretches over the row, so the row stays clickable and the ask link sits on top of it. */
+.change-row, .person-item, .study-grid, .blind-card { position: relative; }
+.blind-card a:not(.row-link) { position: relative; z-index: 1; }
+.row-link { color: inherit; text-decoration: none; }
+.row-link:hover { color: inherit; }
+.row-link::after { content: ""; position: absolute; inset: 0; border-radius: 18px; }
+.row-link:focus-visible { outline: none; }
+.row-link:focus-visible::after { outline: 2px solid #0071E3; outline-offset: 2px; }
+.ask-link {
+  position: relative; z-index: 1; border: 0; background: none; padding: 2px 0; font: inherit; font-size: 13px;
+  color: #0066CC; cursor: pointer; text-align: left;
+}
+.ask-link:hover { color: #004E9E; text-decoration: underline; }
+.ask-link:focus-visible { outline: 2px solid #0071E3; outline-offset: 2px; border-radius: 4px; }
+.ask-sep { font-size: 13px; color: rgba(0,0,0,0.32); }
+.ask-hint { font-size: 13px; color: rgba(0,0,0,0.56); }
+.person-item .ask-link { font-size: 13px; }
+.ask-link.ask-action { font-size: 15px; }
 .status { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; font-size: 17px; color: rgba(0,0,0,0.56); }
 .status p { margin: 0; }
 .stale { background: #FFF8E6; color: #5C4400; font-size: 14px; text-align: center; padding: 10px 24px; }

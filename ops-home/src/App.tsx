@@ -7,7 +7,9 @@ import Reported from "./pages/Reported";
 import Site from "./pages/Site";
 import StudiesPage from "./pages/Studies";
 import Study from "./pages/Study";
-import { BLUE, Footer, Header, INK, MUTED, PANEL, Source, TopPriorities, s, usePath, useShowAll, useSources } from "./ui";
+import { Agentic } from "./Agentic";
+import { savePending } from "./ask";
+import { AskContext, AskLink, BLUE, Footer, Header, INK, MUTED, PANEL, Source, TopPriorities, modeFromUrl, s, usePath, useShowAll, useSources, type Mode } from "./ui";
 import type { BlindSpot, Change, HomeData, PipelinePoint, StudyRow, WaitingGroup, WaitingPerson } from "./types";
 
 const REFRESH_MS = 5 * 60_000;
@@ -33,6 +35,13 @@ function tagStyle(kind: Change["kind"]): CSSProperties {
   };
 }
 
+/** The question a change row hands to Trial Ops. */
+function changeQuestion(c: Change): string {
+  const code = c.where.match(/STUDY-\d+-P\d+/)?.[0];
+  if (code) return `Tell me about ${code}: "${c.text}" What's waiting on it, and with whom?`;
+  return `Tell me more about this: "${c.text}" (${c.where})`;
+}
+
 function Changes({ data, showSources }: { data: HomeData; showSources: boolean }) {
   // Items needing follow-up come first (the server sorts them), so the first few are the ones that matter.
   const { shown, toggle } = useShowAll(data.changes.items, 6);
@@ -49,20 +58,21 @@ function Changes({ data, showSources }: { data: HomeData; showSources: boolean }
         {data.changes.items.length > 0 && (
           <div className="stagger change-list">
             {shown.map((c, i) => {
-              const body = (
-                <>
+              return (
+                <div key={i} className="row change-row">
                   <span style={{ fontSize: 13, color: MUTED, fontVariantNumeric: "tabular-nums" }}>{c.when}</span>
                   <span style={{ minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 17 }}>{c.text}</span>
+                    {c.href ? (
+                      <a className="row-link" href={c.href} style={{ display: "block", fontSize: 17 }}>{c.text}</a>
+                    ) : (
+                      <span style={{ display: "block", fontSize: 17 }}>{c.text}</span>
+                    )}
                     <span style={{ fontSize: 13, color: MUTED }}>{c.where}</span>
+                    <span className="ask-sep" aria-hidden="true"> · </span>
+                    <AskLink question={changeQuestion(c)} />
                   </span>
                   <span style={tagStyle(c.kind)}>{c.tag}</span>
-                </>
-              );
-              return c.href ? (
-                <a key={i} className="row change-row" href={c.href}>{body}</a>
-              ) : (
-                <div key={i} className="row change-row">{body}</div>
+                </div>
               );
             })}
             {toggle && <div style={{ padding: "10px 16px 6px" }}>{toggle}</div>}
@@ -102,11 +112,17 @@ function Person({ p, open, onToggle }: { p: WaitingPerson; open: boolean; onTogg
       {open && (
         <div style={{ padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
           {p.items.map((i) => (
-            <a key={i.code} className="person-item" href={i.href}>
-              <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{i.code}</span>
-              <span>{i.text}</span>
+            <div key={i.code} className="person-item">
+              {i.href
+                ? <a className="row-link" href={i.href} style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{i.code}</a>
+                : <span style={{ fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{i.code}</span>}
+              <span>
+                {i.text}
+                <span className="ask-sep" aria-hidden="true"> · </span>
+                <AskLink question={`Tell me about ${i.code} and what's waiting on them: "${i.text}" (with ${p.name})`} />
+              </span>
               <span style={{ color: MUTED, whiteSpace: "nowrap" }}>{i.age}</span>
-            </a>
+            </div>
           ))}
         </div>
       )}
@@ -254,12 +270,17 @@ function BlindSpots({ data, showSources }: { data: HomeData; showSources: boolea
       ) : (
         <div className="bento two stagger">
           {cards.map((b: BlindSpot, i) => (
-            <a key={i} className="card" href={b.href ?? "#blind-spots"} style={{ background: PANEL, borderRadius: 28, padding: 28, display: "flex", flexDirection: "column", gap: 6, color: INK, textDecoration: "none" }}>
+            <div key={i} className="blind-card" style={{ background: PANEL, borderRadius: 28, padding: 28, display: "flex", flexDirection: "column", gap: 6, color: INK }}>
               <div style={{ fontSize: 13, color: MUTED }}>{b.context}</div>
-              <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>{b.title}</div>
+              {b.href
+                ? <a className="row-link" href={b.href} style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>{b.title}</a>
+                : <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>{b.title}</div>}
               <div style={{ fontSize: 15, lineHeight: 1.47 }}>{b.body}</div>
-              <div style={{ fontSize: 15, color: "#0066CC", marginTop: 6 }}>{b.action}</div>
-            </a>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px", marginTop: 6, fontSize: 15 }}>
+                {b.href && <a href={b.href} style={{ textDecoration: "none" }}>{b.action}</a>}
+                <AskLink question={`${b.title} (${b.context}) ${b.body} Help me with this.`} className="ask-action" />
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -307,10 +328,15 @@ function Studies({ data, showSources }: { data: HomeData; showSources: boolean }
             <span role="columnheader">Alerts</span><span role="columnheader">Waiting on an investigator</span>
           </div>
           {rows.slice(0, HOME_STUDY_LIMIT).map((r) => (
-            <a role="row" key={r.meta} href={r.href} className="row study-grid" style={{ alignItems: "center", minHeight: 80, padding: "0 16px", borderRadius: 18, fontVariantNumeric: "tabular-nums", textDecoration: "none" }}>
+            <div role="row" key={r.meta} className="row study-grid" style={{ alignItems: "center", minHeight: 80, padding: "10px 16px", borderRadius: 18, fontVariantNumeric: "tabular-nums" }}>
               <span role="cell">
-                <span style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{r.short}</span>
+                {r.href
+                  ? <a className="row-link" href={r.href} style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{r.short}</a>
+                  : <span style={{ display: "block", fontSize: 17, fontWeight: 600 }}>{r.short}</span>}
                 <span style={{ fontSize: 13, color: MUTED }}>{r.meta}</span>
+                <span style={{ display: "block" }}>
+                  <AskLink question={`How is ${r.short.split(" · ")[0]} doing? (${r.meta.split(" · ")[0]})`} />
+                </span>
               </span>
               <span role="cell" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span aria-hidden="true" style={{ display: "flex", height: 8, borderRadius: 980, overflow: "hidden", gap: 2 }}>
@@ -327,7 +353,7 @@ function Studies({ data, showSources }: { data: HomeData; showSources: boolean }
                 <span style={{ fontSize: 13, color: MUTED }}>{r.alertNote}</span>
               </span>
               <span role="cell" style={{ fontSize: 15 }}>{r.waiting}</span>
-            </a>
+            </div>
           ))}
         </div>
       </div>
@@ -369,16 +395,58 @@ function route(path: string) {
 
 export default function App() {
   const path = usePath().replace(/\/+$/, "") || "/";
+  const [mode, setMode] = useState<Mode>(modeFromUrl);
+  const [account, setAccount] = useState<string | null>(null);
+  const [session, setSession] = useState(0);
+
+  const switchMode = (next: Mode) => {
+    const url = new URL(location.href);
+    if (next === "agentic") url.searchParams.set("mode", "agentic");
+    else url.searchParams.delete("mode");
+    url.hash = "";
+    history.replaceState(null, "", url);
+    setMode(next);
+    window.scrollTo({ top: 0 });
+  };
+  useEffect(() => {
+    const onPop = () => setMode(modeFromUrl());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  /** From Classic: keep the question, switch to Agentic, which sends it (after sign-in if needed). */
+  const ask = (question: string) => {
+    savePending(question);
+    switchMode("agentic");
+  };
+
+  const signOut = async () => {
+    await fetch("/api/agent/sign-out", { method: "POST" }).catch(() => undefined);
+    setAccount(null);
+    setSession((n) => n + 1);
+  };
+
   useEffect(() => {
     const titles: Array<[RegExp, string]> = [[/^\/studies$/, "Studies"], [/^\/studies\//, "Study"], [/^\/sites\//, "Site"],
       [/^\/participants\//, "Participant"], [/^\/alerts/, "Alerts"], [/^\/calendar/, "Calendar"], [/^\/journeys/, "Journeys"], [/^\/reported/, "Reported data"]];
     document.title = `Trial Ops · ${titles.find(([re]) => re.test(path))?.[1] ?? "Portfolio home"}`;
   }, [path]);
+  const header = <Header path={path} mode={mode} onMode={switchMode} account={account} onSignOut={signOut} />;
+  if (mode === "agentic") {
+    return (
+      <>
+        {header}
+        <div className="agentic-root">
+          <Agentic key={session} onAccount={setAccount} />
+        </div>
+      </>
+    );
+  }
   return (
-    <>
-      <Header path={path} />
+    <AskContext.Provider value={ask}>
+      {header}
       {route(path)}
-    </>
+    </AskContext.Provider>
   );
 }
 

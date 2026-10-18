@@ -1,6 +1,7 @@
-# The patient assistant: mini-apps on 3010 (proxied at patient.hackharvard2026.velroi.com) and
+# The patient assistant and Trial Ops: mini-apps on 3010 (proxied at patient.hackharvard2026.velroi.com),
 # the internal line router on 3011, which other bots on the shared iMessage line (Charles Sprint)
-# reach as patient-assistant:3011 on the `web` network. Postgres is clinical-db's `postgres`.
+# reach as patient-assistant:3011 on the `web` network, and the internal Trial Ops API on 3012, which
+# the ops website (ops-home) calls as patient-assistant:3012. Neither 3011 nor 3012 is proxied. Postgres is clinical-db's `postgres`.
 services:
   app:
     build: .
@@ -13,11 +14,16 @@ services:
     environment:
       PORT: "3010"
       ROUTER_PORT: "3011"
+      TRIAL_OPS_API_PORT: "3012"
+      # Consent-signed emails go to this address instead of the investigators' on file (synthetic staff).
+      PI_EMAIL: bl108@wellesley.edu
+      # Verified in Resend (DNS on Cloudflare: resend._domainkey and send.hackharvard).
+      EMAIL_FROM: Sage <sage@hackharvard.velroi.com>
       PUBLIC_URL: https://patient.hackharvard2026.velroi.com
       TIMEZONE: America/New_York
       # Used only if the TypeSafe key is missing: then new chats start when they match this.
       ENGAGE_PATTERN: "\\b(study|studies|trial|trials|migraine|sage|consent|clinical|enroll|qualify)\\b"
-    mem_limit: 320m
+    mem_limit: 448m
     networks:
       default:
       web:

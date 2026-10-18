@@ -4,7 +4,7 @@
 // records with the server, exactly like a tap. Nothing is sent until the person reviews and submits.
 // Layout: one orb, Sage's words in big type, what was heard so far, and a glass bar with a mute
 // toggle, the primary action, and an options menu.
-import { actionbar, api, h, icons, optionsMenu, roundButton } from "./ui.js?v=9";
+import { actionbar, api, h, icons, optionsMenu, roundButton } from "./ui.js?v=10";
 
 const RATE = 24000;
 const STATES = {

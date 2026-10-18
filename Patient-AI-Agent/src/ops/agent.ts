@@ -1,0 +1,289 @@
+// Trial Ops in iMessage: a linked manager's texts on the shared line come here (unless they've
+// switched the chat to Sage). The core (core.ts) runs the turn; this adapter keeps the chat mode,
+// sends the reply and the cards, and tells the manager when an analysis is done.
+import type { Assistant } from "../agent/assistant.ts";
+import type { Escalation } from "../agent/journey.ts";
+import { describeError } from "../agent/brain.ts";
+import { LoopGuard, type ChannelResolver, type Conversation } from "../agent/channel.ts";
+import { config } from "../config.ts";
+import type { Thread as SageThread } from "../store.ts";
+import type { AnalysisDone } from "./analyst.ts";
+import { prepare } from "./approvals.ts";
+import type { View } from "./data.ts";
+import { OpsCore, type OpsTurn } from "./core.ts";
+import { ops } from "./db.ts";
+import * as store from "./store.ts";
+
+const TO_SAGE = /^\s*(\/)?sage\s*[.!]?\s*$/i;
+const TO_OPS = /^\s*(\/)?(ops|trial ops)\s*[.!]?\s*$/i;
+
+export class OpsAgent {
+  readonly core: OpsCore;
+  private readonly channels: ChannelResolver[] = [];
+  private readonly loopGuard = new LoopGuard("ops");
+  /** Handles told this line is for study teams, so they're told once a day at most. */
+  private readonly turnedAway = new Map<string, number>();
+
+  constructor(sage: Pick<Assistant, "nudge">, core?: OpsCore) {
+    this.core = core ?? new OpsCore({ askSage: (handle, note) => sage.nudge(handle, note) });
+    this.core.onAnalysisDone((done) => this.analysisDone(done));
+  }
+
+  addChannel(channel: ChannelResolver): void {
+    this.channels.push(channel);
+  }
+
+  /** Whether a message is Trial Ops': a linked manager whose chat is in Ops mode, or switching to it. */
+  async claims(handle: string, text: string): Promise<boolean> {
+    const m = await store.managerByHandle(ops, handle);
+    if (!m) return false;
+    return TO_OPS.test(text) || m.chatMode === "ops";
+  }
+
+  /**
+   * A text to Trial Ops' own line (its own Photon project): every message is Trial Ops'. People who
+   * aren't linked managers are told who the line is for, once a day at most.
+   */
+  onLine(conversation: Conversation, text: string, externalId: string): void {
+    void (async () => {
+      const m = await store.managerByHandle(ops, conversation.handle);
+      console.log(`ops: text on ${config.ops.name}' line from ${m ? `manager ${m.displayName}` : "someone not linked"} (${text.length} characters)`);
+      if (m) return this.onInbound(conversation, text, externalId, { dedicated: true });
+      const last = this.turnedAway.get(conversation.handle) ?? 0;
+      if (Date.now() - last < 86_400_000) return;
+      this.turnedAway.set(conversation.handle, Date.now());
+      await conversation.sendText(`This is ${config.ops.name}, for clinical trial study teams. If you're on a study team, ask your administrator to add your number.`);
+    })().catch((error) => console.error("ops: line message failed", describeError(error)));
+  }
+
+  onInbound(conversation: Conversation, text: string, externalId: string, options: { dedicated?: boolean } = {}): void {
+    void (async () => {
+      const m = await store.managerByHandle(ops, conversation.handle);
+      if (!m) return;
+      await this.core.serial(m.id, async () => {
+        const heard = await this.core.hear(m, text, { externalId, externalSpaceId: conversation.externalSpaceId });
+        if (!heard) return; // a replay
+        if (!options.dedicated && TO_SAGE.test(text)) {
+          await store.setChatMode(ops, m.id, "sage");
+          return this.say(conversation, heard.threadId, `Okay, this chat is with ${config.assistantName} now. Text "ops" to come back to ${config.ops.name}.`);
+        }
+        if (!this.loopGuard.allow(m.id)) return;
+        let note: string | undefined;
+        if (!options.dedicated && TO_OPS.test(text)) {
+          await store.setChatMode(ops, m.id, "ops");
+          note = `They switched this chat to ${config.ops.name}. Greet them in one line with today's most important item.`;
+        }
+        await this.deliver(conversation, heard.threadId, await this.core.reply({ ...m, chatMode: "ops" }, heard.threadId, { trailingNote: note, typing: conversation.typing.bind(conversation) }));
+      });
+    })().catch((error) => console.error("ops: inbound failed", describeError(error)));
+  }
+
+  /** A fixed text from Trial Ops (e.g. a Face ID link), in order with the manager's turns. */
+  notify(managerId: string, text: string): void {
+    void this.core.serial(managerId, async () => {
+      const found = await this.conversationOf(managerId);
+      if (found) await this.say(found.conversation, found.threadId, text);
+    }).catch((error) => console.error("ops: notify failed", describeError(error)));
+  }
+
+  /**
+   * An analysis finished (or stopped): its live status card is updated in place, then a turn tells
+   * them the result. The turn goes into their conversation even when iMessage can't be reached, so
+   * the website shows it too; without a card to update, a new report card goes with it.
+   */
+  private async analysisDone(done: AnalysisDone): Promise<void> {
+    await this.core.serial(done.managerId, async () => {
+      const m = await store.managerById(ops, done.managerId);
+      if (!m) return;
+      const thread = await store.ensureThread(ops, m.id);
+      const found = await this.conversationOf(m.id);
+      const [sent] = await ops<{ id: string; token: string; message_id: string; session: unknown }>(
+        `select id, token, message_id, session from ops.cards where manager_id = $1 and view = 'analysis' and params->>'id' = $2 and message_id is not null
+         order by created_at desc limit 1`, [m.id, done.id]);
+      let updated = false;
+      if (found && sent) {
+        const card = this.core.card({
+          cardId: sent.id, view: "analysis", params: { id: done.id }, title: done.title, url: `${config.publicUrl}/o/${sent.token}`,
+          text: { headline: done.title.length <= 34 ? done.title : `${done.title.slice(0, 33)}…`, subline: done.status === "done" ? "Summary, findings, charts and tables." : done.status === "cancelled" ? "Stopped." : "Couldn't finish.", badge: done.status === "done" ? "Report" : "Stopped" },
+        });
+        const ref = await found.conversation.updateCard({ messageId: sent.message_id, session: sent.session ?? undefined }, card).catch(() => undefined);
+        if (ref) {
+          await store.markCardSent(ops, sent.id, ref);
+          updated = true;
+        }
+      }
+      if (done.status === "cancelled") return; // they stopped it; the card says so
+      const turn = await this.core.reply(m, thread.id, {
+        trailingNote: updated ? "An analysis just finished (see the update above) and its card already shows the report. Tell them now; don't send another card for it." : "An analysis just finished (see the update above). Tell them now.",
+        ensureLink: updated ? undefined : { view: "analysis", params: { id: done.id } },
+      });
+      if (found) await this.deliver(found.conversation, found.threadId, turn);
+    });
+  }
+
+  /**
+   * A message Trial Ops starts (a new-alert notice), with its card: kept in the conversation, so
+   * the website shows it too, and sent in iMessage when the manager has a chat there.
+   */
+  proactive(managerId: string, text: string, link?: { view: View; params: Record<string, string>; query?: string }): Promise<void> {
+    return this.core.serial(managerId, async () => {
+      const m = await store.managerById(ops, managerId);
+      if (!m) return;
+      const thread = await store.ensureThread(ops, m.id);
+      await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", body: text });
+      const links = link ? [await this.core.link(m, link.view, link.params, {}, link.query)] : [];
+      for (const l of links) await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", kind: "card", body: l.title, link: { view: l.view, title: l.title, url: l.url } });
+      const found = await this.conversationOf(m.id);
+      if (found) await this.deliver(found.conversation, found.threadId, { text, links });
+    });
+  }
+
+  /**
+   * The first text to a newly linked manager on Trial Ops' own line, with today's portfolio card,
+   * so their chat exists before they write. Once: afterwards they have a thread. False if no channel
+   * could open a chat with them.
+   */
+  welcome(managerId: string): Promise<boolean> {
+    return this.core.serial(managerId, async () => {
+      const m = await store.managerById(ops, managerId);
+      if (!m || (await store.threadFor(ops, m.id))?.externalSpaceId) return false;
+      let conversation: Conversation | undefined;
+      for (const channel of this.channels) {
+        conversation = await channel.open?.(m.handle).catch((error) => {
+          console.error("ops: couldn't open a chat", describeError(error));
+          return undefined;
+        });
+        if (conversation) break;
+      }
+      if (!conversation) return false;
+      const thread = await store.ensureThread(ops, m.id, conversation.externalSpaceId);
+      const first = m.displayName.split(" ")[0];
+      const text = `Hi ${first}, this is ${config.ops.name}, the study team's assistant. Ask me what needs your attention, about any study, site or participant, for a decision to confirm with Face ID, or to spin up a computer for a heavy analysis. Here's today.`;
+      const link = await this.core.link(m, "home", {});
+      await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", body: text });
+      await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", kind: "card", body: link.title, link: { view: link.view, title: link.title, url: link.url } });
+      await this.deliver(conversation, thread.id, { text, links: [link] });
+      console.log(`ops: welcomed manager ${m.displayName} on ${config.ops.name}' line`);
+      return true;
+    });
+  }
+
+  /**
+   * Sage escalated a case: every manager linked to that study hears at once, whatever its severity
+   * (unless they turned alert texts off), with the alert card. It's claimed in ops.notices like the
+   * notifier's alerts, so neither sends it twice. The row is written in Sage's transaction, so this
+   * waits a moment for it to be visible.
+   */
+  async escalated(x: Escalation): Promise<void> {
+    type Row = { participant_code: string | null; study_code: string; site_name: string | null; severity: string; reason: string; assignee: string | null; assignee_role: string | null };
+    let row: Row | undefined;
+    for (let i = 0; i < 30 && !row; i++) {
+      [row] = x.kind === "alert"
+        ? await ops<Row>("select participant_code, study_code, site_name, severity, reason, assignee, assignee_role from ops.alerts where id = $1", [x.id])
+        : await ops<Row>(`select null participant_code, t.study_code, null site_name, coalesce(t.payload->>'severity', $2) severity, coalesce(t.payload->>'reason', $3) reason, null assignee, null assignee_role
+                          from ops.tasks t where t.id = $1`, [x.id, x.severity, x.reason]);
+      if (!row) await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!row) return; // rolled back
+    const managers = await ops<{ id: string }>(
+      `select distinct m.id from ops.managers m join ops.manager_staff ms on ms.manager_id = m.id join ops.staff s on s.staff_user_id = ms.staff_user_id
+       join ops.studies st on st.id = s.study_id where st.study_code = $1 and m.is_active and s.is_active and m.prefs->>'alerts' <> 'off'`, [row.study_code]);
+    const who = row.participant_code ?? `someone screening for ${row.study_code}`;
+    const owner = row.assignee ? ` ${row.assignee} (${row.assignee_role === "principal_investigator" ? "investigator" : row.assignee_role ?? "staff"}) has it.` : "";
+    const reason = row.reason.length > 300 ? `${row.reason.slice(0, 299)}…` : row.reason;
+    const text = `Sage escalated ${who} (${row.severity}): ${reason.replace(/\.?$/, ".")}${owner}`;
+    for (const m of managers) {
+      const [claimed] = await ops<{ ref: string }>(
+        "insert into ops.notices (manager_id, kind, ref) values ($1, 'alert', $2) on conflict do nothing returning ref", [m.id, x.kind === "alert" ? x.id : `task:${x.id}`]);
+      if (!claimed) continue;
+      await this.proactive(m.id, text, x.kind === "alert" ? { view: "alert", params: { id: x.id } } : undefined);
+    }
+    if (managers.length) console.log(`ops: told ${managers.length} manager(s) about Sage's escalation (${row.study_code}, ${row.severity})`);
+  }
+
+  /**
+   * Someone signed the informed consent through Sage: each manager linked to that study gets the
+   * enrollment decision right away, prepared and ready to confirm with Face ID. Confirming enrolls
+   * them and starts their check-ins. Claimed in ops.notices, so it goes once per manager.
+   */
+  async enrollmentRequested(request: { participantId: string; studyId: string }): Promise<void> {
+    let task: { id: string; participant_code: string; study_code: string; site_name: string } | undefined;
+    for (let i = 0; i < 30 && !task; i++) {
+      [task] = await ops<{ id: string; participant_code: string; study_code: string; site_name: string }>(
+        `select id, participant_code, study_code, site_name from ops.tasks
+         where participant_id = $1 and action_type = 'confirm_enrollment' and status in ('pending', 'waiting_review')`, [request.participantId]);
+      if (!task) await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!task) return;
+    const [c] = await ops<{ version: string }>("select version from ops.consents where participant_id = $1 and signed_at is not null order by signed_at desc limit 1", [request.participantId]);
+    const managers = await ops<{ id: string }>(
+      `select distinct m.id from ops.managers m join ops.manager_staff ms on ms.manager_id = m.id join ops.staff s on s.staff_user_id = ms.staff_user_id
+       where s.study_id = $1 and m.is_active and s.is_active and m.prefs->>'alerts' <> 'off'`, [request.studyId]);
+    let told = 0;
+    for (const { id } of managers) {
+      const [claimed] = await ops<{ ref: string }>("insert into ops.notices (manager_id, kind, ref) values ($1, 'alert', $2) on conflict do nothing returning ref", [id, `enroll:${task.id}`]);
+      if (!claimed) continue;
+      const m = await store.managerById(ops, id);
+      if (!m) continue;
+      let approval;
+      try {
+        approval = await prepare(m, "confirm_enrollment", task.id, null, "agent");
+      } catch (error) {
+        console.warn("ops: enrollment decision not prepared", describeError(error));
+        continue;
+      }
+      const prescreen = approval.lines.find((l) => l.startsWith("Sage's prescreen")) ?? "";
+      await this.proactive(id,
+        `${task.participant_code} signed the informed consent${c ? ` (ICF ${c.version})` : ""} at ${task.site_name} through Sage. ${prescreen} Approve their enrollment? Confirming with Face ID enrolls them and starts their check-ins today.`.replace(/\s+/g, " "),
+        { view: "approvals", params: {}, query: `approval=${approval.id}` });
+      told += 1;
+    }
+    if (told) console.log(`ops: asked ${told} manager(s) to approve ${task.study_code}'s new enrollment`);
+  }
+
+  /** The morning briefing: a turn written for the day, with the portfolio card. */
+  briefing(managerId: string): Promise<void> {
+    return this.core.serial(managerId, async () => {
+      const m = await store.managerById(ops, managerId);
+      if (!m) return;
+      const thread = await store.ensureThread(ops, m.id);
+      const turn = await this.core.reply(m, thread.id, {
+        trailingNote: "It's time for their morning briefing. Start with \"Good morning.\" then in three to five short lines: the one thing that most needs them today, the decisions waiting on them, anything stuck or gone quiet, and one bit of progress since yesterday.",
+        ensureLink: { view: "home", params: {} },
+      });
+      const found = await this.conversationOf(m.id);
+      if (found) await this.deliver(found.conversation, found.threadId, turn);
+    });
+  }
+
+  private async conversationOf(managerId: string): Promise<{ conversation: Conversation; threadId: string } | undefined> {
+    const m = await store.managerById(ops, managerId);
+    const thread = m && (await store.threadFor(ops, managerId));
+    if (!m || !thread?.externalSpaceId) return undefined;
+    const ref = { channel: "imessage", handle: m.handle, externalSpaceId: thread.externalSpaceId } as unknown as SageThread;
+    for (const channel of this.channels) {
+      const conversation = await channel.resolve(ref).catch(() => undefined);
+      if (conversation) return { conversation, threadId: thread.id };
+    }
+    return undefined;
+  }
+
+  private async say(conversation: Conversation, threadId: string, text: string): Promise<void> {
+    const sent = await conversation.sendText(text);
+    await store.addMessage(ops, { threadId, direction: "outbound", author: "agent", body: text, externalId: sent.externalId });
+  }
+
+  /** Sends a turn: the text (already in the transcript), then each card. */
+  private async deliver(conversation: Conversation, threadId: string, turn: OpsTurn): Promise<void> {
+    if (turn.text) await conversation.sendText(turn.text);
+    for (const l of turn.links) {
+      try {
+        const ref = await conversation.sendCard(this.core.card(l));
+        await store.markCardSent(ops, l.cardId, ref);
+      } catch (error) {
+        console.error("ops: card failed", describeError(error));
+        await this.say(conversation, threadId, `Open it here: ${l.url}`);
+      }
+    }
+  }
+}

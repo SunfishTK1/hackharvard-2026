@@ -110,6 +110,76 @@ export const config = {
   /** Used for people and for sites whose time zone is unset (the platform defaults sites to UTC). */
   timeZone: pick("TIMEZONE") ?? "America/New_York",
   assistantName: pick("ASSISTANT_NAME") ?? "Sage",
+  /**
+   * Trial Ops, the agent for trial managers on the same line. It runs as the platform's
+   * manager_agent role (TRIAL_OPS_DATABASE_URL) and is off without it. OPS_USE_STAFF_DATABASE=1 runs it
+   * on the staff (developer) login instead, for local testing only.
+   */
+  ops: {
+    get databaseUrl(): string | undefined {
+      const url = pick("TRIAL_OPS_DATABASE_URL", "MANAGER_AGENT_DATABASE_URL");
+      if (url) return databaseUrl(url);
+      return pick("OPS_USE_STAFF_DATABASE") === "1" ? config.staffDatabaseUrl : undefined;
+    },
+    model: pick("OPS_MODEL") ?? "claude-opus-5-5",
+    effort: (pick("OPS_EFFORT") ?? "low") as "low" | "medium" | "high",
+    name: pick("OPS_NAME") ?? "Trial Ops",
+    /**
+     * Trial Ops' own Photon (Spectrum) project and line. Set, every text to that line goes to Trial
+     * Ops and Sage's line is Sage's alone; unset, managers reach Trial Ops on Sage's line ("ops").
+     */
+    spectrum: {
+      projectId: pick("TRIAL_OPS_SPECTRUM_PROJECT_ID"),
+      projectSecret: pick("TRIAL_OPS_SPECTRUM_PROJECT_SECRET"),
+    },
+    /** The internal API other apps (the ops website) use; off without a token. Never proxied publicly. */
+    apiPort: Number(pick("TRIAL_OPS_API_PORT") ?? 3012),
+    apiToken: pick("TRIAL_OPS_API_TOKEN"),
+    /**
+     * Face ID on the ops website: the passkey relying party, the parent domain of the mini-apps' host
+     * (patient.hackharvard2026.velroi.com -> hackharvard2026.velroi.com) so it covers ops.* too.
+     */
+    get webRpId(): string {
+      const explicit = pick("TRIAL_OPS_WEB_RP_ID");
+      if (explicit) return explicit;
+      const labels = new URL(publicUrl).hostname.split(".");
+      return labels.length > 2 ? labels.slice(1).join(".") : labels.join(".");
+    },
+    /** Where a web sign-in link may send the manager back to. */
+    webOrigins: (pick("TRIAL_OPS_WEB_ORIGINS") ?? "https://ops.hackharvard2026.velroi.com,http://localhost:3000,http://localhost:5173")
+      .split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
+    /** The analyst that works on a Daytona computer for heavy analyses. */
+    analystModel: pick("OPS_ANALYST_MODEL") ?? "claude-opus-5-5",
+    analystEffort: (pick("OPS_ANALYST_EFFORT") ?? "medium") as "low" | "medium" | "high",
+  },
+  /**
+   * Email through Resend: the site investigator hears when someone signs the informed consent. Off
+   * without a key. PI_EMAIL sends those emails to one address instead of the investigators' on file
+   * (the synthetic study staff have example.org addresses).
+   */
+  email: {
+    resendKey: pick("RESEND_API_KEY", "Resend_API_KEY"),
+    from: pick("EMAIL_FROM") ?? "Sage <onboarding@resend.dev>",
+    piOverride: pick("PI_EMAIL"),
+  },
+  /** Daytona cloud computers for Trial Ops analyses. Off without an API key. */
+  daytona: {
+    apiKey: pick("DAYTONA_API_KEY", "Daytona_API_Key", "DAYTONA_KEY"),
+    apiUrl: pick("DAYTONA_API_URL"),
+    target: pick("DAYTONA_TARGET"),
+    /** A prepared Daytona snapshot to start from; otherwise IMAGE with the resources below. */
+    snapshot: pick("OPS_COMPUTER_SNAPSHOT"),
+    image: pick("OPS_COMPUTER_IMAGE") ?? "python:3.12",
+    cpu: Number(pick("OPS_COMPUTER_CPU") ?? 2),
+    memory: Number(pick("OPS_COMPUTER_MEMORY") ?? 4),
+    disk: Number(pick("OPS_COMPUTER_DISK") ?? 10),
+    /**
+     * The larger sizes an analysis can ask for. GPU computers need GPU credits on the Daytona account.
+     * Daytona allows at most 10 GB of disk per computer.
+     */
+    large: { cpu: Number(pick("OPS_LARGE_CPU") ?? 4), memory: Number(pick("OPS_LARGE_MEMORY") ?? 8), disk: Number(pick("OPS_LARGE_DISK") ?? 10) },
+    gpu: { cpu: Number(pick("OPS_GPU_CPU") ?? 4), memory: Number(pick("OPS_GPU_MEMORY") ?? 16), disk: Number(pick("OPS_GPU_DISK") ?? 10), gpu: Number(pick("OPS_GPU_COUNT") ?? 1), gpuType: pick("OPS_GPU_TYPE") },
+  },
 };
 
 export type Config = typeof config;

@@ -13,6 +13,16 @@ import type { Engagement } from "../store.ts";
 
 export type MoveResult = { ok: true } | { ok: false; reason: string };
 
+/** Sage asked the study team to act: a platform alert (a participant) or a staff task (before one). */
+export interface Escalation {
+  id: string;
+  kind: "alert" | "task";
+  studyId: string;
+  severity: string;
+  reason: string;
+  alertType: string;
+}
+
 export class Journey {
   private readonly knowledge: TrialKnowledge;
   private readonly defaultStudyCode: string | undefined;
@@ -126,7 +136,31 @@ export class Journey {
    */
   async alertStaff(q: Query, e: Engagement, severity: store.Severity, reason: string, action: string, alertType = "patient_assistant", dedupe?: string): Promise<boolean> {
     const id = await store.notifyStaff(q, e, severity, reason.slice(0, 2000), action.slice(0, 1000), alertType, dedupe);
-    if (id) await store.audit(q, e.personId, e.id, "assistant", "staff_notified", { severity, alert_type: alertType });
+    if (id) {
+      await store.audit(q, e.personId, e.id, "assistant", "staff_notified", { severity, alert_type: alertType });
+      const escalation: Escalation = { id, kind: e.participantId ? "alert" : "task", studyId: e.trialId, severity, reason, alertType };
+      for (const listener of this.escalationListeners) listener(escalation);
+    }
     return id !== null;
+  }
+
+  private readonly escalationListeners: ((escalation: Escalation) => void)[] = [];
+  private readonly enrollmentListeners: ((request: { participantId: string; studyId: string }) => void)[] = [];
+
+  /** Called once a signed consent has asked the study team to approve the enrollment (after it commits). */
+  onEnrollmentRequest(listener: (request: { participantId: string; studyId: string }) => void): void {
+    this.enrollmentListeners.push(listener);
+  }
+
+  enrollmentRequested(request: { participantId: string; studyId: string }): void {
+    for (const listener of this.enrollmentListeners) listener(request);
+  }
+
+  /**
+   * Called for every new escalation, from inside the transaction that raises it (so the row may not
+   * be visible to other connections for a moment). Trial Ops uses it to text the study's managers.
+   */
+  onEscalation(listener: (escalation: Escalation) => void): void {
+    this.escalationListeners.push(listener);
   }
 }

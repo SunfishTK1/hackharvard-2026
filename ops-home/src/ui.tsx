@@ -1,7 +1,28 @@
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { Crumb, Lifecycle, Priorities, Tile } from "./types";
 
-export const AGENTIC_URL = "https://trial-manager.hackharvard2026.velroi.com";
+export type Mode = "classic" | "agentic";
+export const modeFromUrl = (): Mode => (new URLSearchParams(location.search).get("mode") === "agentic" ? "agentic" : "classic");
+
+/** Hands a question from a Classic page to Trial Ops (Agentic mode), which sends it after sign-in if needed. */
+export type Ask = (question: string) => void;
+export const AskContext = createContext<Ask>(() => {});
+
+/** A quiet "Ask Trial Ops" link. */
+export function AskLink({ question, label = "Ask Trial Ops", className = "" }: { question: string; label?: string; className?: string }) {
+  const ask = useContext(AskContext);
+  return (
+    <button type="button" className={`ask-link ${className}`.trim()} onClick={() => ask(question)} title={question}>
+      {label}
+    </button>
+  );
+}
+
+/** A pill-shaped button that asks Trial Ops, for page headers and alert actions. */
+export function AskButton({ question, style, children }: { question: string; style: CSSProperties; children: ReactNode }) {
+  const ask = useContext(AskContext);
+  return <button type="button" onClick={() => ask(question)} style={{ ...style, border: 0, font: "inherit", cursor: "pointer" }}>{children}</button>;
+}
 const REFRESH_MS = 5 * 60_000;
 
 export const INK = "#1D1D1F";
@@ -137,35 +158,63 @@ const NAV: Array<[string, string | null, (p: string) => boolean]> = [
   ["Documents", null, () => false],
 ];
 
-export function Header({ path }: { path: string }) {
+export function Header({ path, mode, onMode, account, onSignOut }: {
+  path: string; mode: Mode; onMode: (m: Mode) => void; account: string | null; onSignOut: () => void;
+}) {
   const link: CSSProperties = { display: "flex", alignItems: "center", minHeight: 48, color: INK, textDecoration: "none" };
+  // Both modes live on this site: the toggle switches in place and keeps ?mode= in the address.
+  const go = (m: Mode) => (e: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    onMode(m);
+  };
+  // Agentic mode lays its panels out under the bar, so publish the bar's height.
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const measure = () => document.documentElement.style.setProperty("--topbar-h", `${Math.round(el.getBoundingClientRect().height)}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <header className="topbar">
+    <header className="topbar" ref={bar}>
       <nav aria-label="Primary" className="topnav">
-        <a href="/" aria-current={path === "/" ? "page" : undefined} className="brand">
+        <a href={mode === "classic" ? "/" : "?mode=agentic"} aria-current={mode === "agentic" || path === "/" ? "page" : undefined} className="brand"
+          onClick={mode === "agentic" ? go("agentic") : undefined}>
           <span aria-hidden="true" className="brand-mark" />Trial Ops
         </a>
-        <div className="topnav-links">
-          {NAV.map(([label, href, isCurrent]) =>
-            href ? (
-              <a key={label} href={href} aria-current={isCurrent(path) ? "page" : undefined}
-                style={{ ...link, fontWeight: isCurrent(path) ? 600 : undefined }}>{label}</a>
-            ) : (
-              <span key={label} style={{ ...link, color: "rgba(0,0,0,0.32)" }} title="Coming soon">{label}</span>
-            ),
-          )}
-        </div>
-        <div className="topnav-actions">
-          <a href="/studies?search" aria-label="Search studies" className="icon-button">
-            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
-          </a>
-          <div role="group" aria-label="Mode" className="mode-toggle">
-            <a href="#top" aria-current="page" className="mode-on">Classic</a>
-            <a href={AGENTIC_URL} className="mode-off">Agentic</a>
+        {mode === "classic" ? (
+          <div className="topnav-links">
+            {NAV.map(([label, href, isCurrent]) =>
+              href ? (
+                <a key={label} href={href} aria-current={isCurrent(path) ? "page" : undefined}
+                  style={{ ...link, fontWeight: isCurrent(path) ? 600 : undefined }}>{label}</a>
+              ) : (
+                <span key={label} style={{ ...link, color: "rgba(0,0,0,0.32)" }} title="Coming soon">{label}</span>
+              ),
+            )}
           </div>
-          <span className="icon-button" role="img" aria-label="Account" title="Signed-in staff accounts aren’t set up yet">
-            <svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="10" r="3.2" /><path d="M6.5 18.5c1.3-2.2 3.2-3.3 5.5-3.3s4.2 1.1 5.5 3.3" strokeLinecap="round" /></svg>
-          </span>
+        ) : account ? (
+          <div className="account">
+            <span>Signed in as <span style={{ color: INK, fontWeight: 600 }}>{account}</span></span>
+            <button type="button" className="link-button" onClick={onSignOut}>Sign out</button>
+          </div>
+        ) : (
+          <div className="topnav-spacer" />
+        )}
+        <div className="topnav-actions">
+          {mode === "classic" && (
+            <a href="/studies?search" aria-label="Search studies" className="icon-button">
+              <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+            </a>
+          )}
+          <div role="group" aria-label="Mode" className="mode-toggle">
+            <a href="?" onClick={go("classic")} aria-current={mode === "classic" ? "page" : undefined} className={mode === "classic" ? "mode-on" : "mode-off"}>Classic</a>
+            <a href="?mode=agentic" onClick={go("agentic")} aria-current={mode === "agentic" ? "page" : undefined} className={mode === "agentic" ? "mode-on" : "mode-off"}>Agentic</a>
+          </div>
         </div>
       </nav>
     </header>

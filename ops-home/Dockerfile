@@ -12,7 +12,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
-COPY server.ts home.ts pages.ts redact.ts ./
+COPY server.ts home.ts pages.ts redact.ts agent-proxy.ts ./
 COPY src/types.ts ./src/types.ts
 USER node
 CMD ["node", "server.ts"]

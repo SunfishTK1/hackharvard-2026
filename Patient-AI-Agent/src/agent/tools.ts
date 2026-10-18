@@ -210,8 +210,9 @@ export function assistantTools(ctx: ToolContext) {
           if (!measure) return `Unknown measure. Options: ${measures.map((m) => m.code).join(", ")}.`;
           if (await store.recentlyCheckedIn(q, e.id, measure.code)) return "Already saved from their check-in card; nothing to do.";
           const source = await store.lastPlatformInbound(q);
+          let id: string;
           try {
-            await store.recordObservation(q, e, {
+            id = await store.recordObservation(q, e, {
               measureCode: measure.code, value, raw: source?.body ?? String(value), confidence: 0.85,
               source: source ? "patient_message" : "app_event", platformMessageId: source?.id,
             });
@@ -220,8 +221,9 @@ export function assistantTools(ctx: ToolContext) {
             if (why) return `Not recorded: ${why}`;
             throw error;
           }
-          await note(q, `You recorded ${measure.label}: ${value}.`);
-          return "Recorded.";
+          const alerted = store.ruleAlertNote(await store.ruleAlerts(q, e, [id]));
+          await note(q, `You recorded ${measure.label}: ${value}.${alerted}`);
+          return `Recorded.${alerted}`;
         }),
     }),
 
@@ -240,7 +242,7 @@ export function assistantTools(ctx: ToolContext) {
           const level = serious && severity !== "life_threatening" ? "high" : SYMPTOM_SEVERITY[severity];
           const raised = await ctx.journey.alertStaff(q, e, level, `Reported symptom: ${term} (${severity}${serious ? ", serious" : ""}). ${description}`,
             level === "critical" || level === "high" ? "Contact the participant today and assess for an adverse event." : "Review at the next contact; assess for an adverse event.",
-            "adverse_event", `symptom:${term.trim().toLowerCase()}:${level}`);
+            "safety_review", `symptom:${term.trim().toLowerCase()}:${level}`);
           if (!raised) return "The study team already has an open alert about this symptom.";
           await note(q, `You alerted the study team about ${term} (${severity}).`);
           return "The study team has been alerted.";

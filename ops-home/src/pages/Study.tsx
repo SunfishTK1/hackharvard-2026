@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import type { CalendarCell, StudyData } from "../types";
-import { AGENTIC_URL, BLUE, Crumbs, Footer, INK, MUTED, PANEL, Source, Stale, Status, StudyTabs, Tiles, TopPriorities, pillLink, s, segment, useApi, useShowAll, useSources } from "../ui";
+import { AskButton, BLUE, Crumbs, Footer, INK, MUTED, PANEL, Source, Stale, Status, StudyTabs, Tiles, TopPriorities, pillLink, s, segment, useApi, useShowAll, useSources } from "../ui";
 
 function cellStyle(c: CalendarCell, i: number): CSSProperties {
   const base: CSSProperties = { position: "relative", display: "block", height: 30, borderRadius: 6, animationDelay: `${i * 0.025}s` };
@@ -51,7 +51,7 @@ export default function Study({ code }: { code: string }) {
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <span style={{ ...pillLink(false), color: "rgba(0,0,0,0.32)", cursor: "default" }} title="Coming soon">Documents</span>
-            <a href={AGENTIC_URL} style={pillLink(true)}>Ask agent</a>
+            <AskButton question={`How is ${data.eyebrow.replace(/ study$/, "")} doing? (${code}) What needs attention?`} style={pillLink(true)}>Ask Trial Ops</AskButton>
           </div>
         </div>
       </section>

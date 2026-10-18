@@ -1,6 +1,6 @@
 # ops-home
 
-The trial manager's **portfolio home** (the "Classic" view): one page that says what changed since yesterday, who has the next move, whether enrollment is slowing, what no alert rule caught, and how each study is doing. It is the Claude Design draft "Clinical Trial Ops – Portfolio home", wired to the live `clinical_trials` database. The "Agentic" toggle links to the [trial manager view](https://trial-manager.hackharvard2026.velroi.com).
+The trial manager's **portfolio home** (the "Classic" view): one page that says what changed since yesterday, who has the next move, whether enrollment is slowing, what no alert rule caught, and how each study is doing. It is the Claude Design draft "Clinical Trial Ops – Portfolio home", wired to the live `clinical_trials` database. The "Agentic" toggle switches the same page to **Agentic mode**, a conversation with Trial Ops (below).
 
 Address once deployed: https://ops.hackharvard2026.velroi.com
 
@@ -19,6 +19,24 @@ Address once deployed: https://ops.hackharvard2026.velroi.com
 | Study health | `studies`, `participants`, `has_current_consent()`, `alerts`, `workflow_tasks`, trial manager from `study_staff` |
 
 Dates and "yesterday" use `America/New_York` (`DISPLAY_TZ`).
+
+## Agentic mode
+
+`?mode=agentic` (or the toggle, which switches in place) turns the page into the **Trial Ops workspace**: everything a trial manager can do with Trial Ops in iMessage (`Patient-AI-Agent/src/ops`), on the web, in the same design language as its mini-apps. On a phone the rail becomes a strip of views and the conversation a full sheet.
+
+- **Rail**: Today, Decisions, Alerts, Studies, Participants, Pipeline, Data quality, Analyses, Notifications, with badges for decisions waiting, new alerts and running analyses. The center renders each view natively from `GET /api/agent/views/<view>`, and every row goes somewhere: a study, a participant, an alert. Dashboards refresh every 60 s while the tab is visible.
+- **Decisions in place**: confirm or decline enrollments, sign off safety reviews (with the manager's own note), record baselines, and acknowledge or resolve alerts, each with Face ID. Face ID is a passkey for the ops site. Several enrollments or baselines can be picked and confirmed with one Face ID. "Face ID not working?" confirms with the manager's full name instead, recorded as without Face ID. A browser with no passkeys gets the decision's own page.
+- **Participants**: readings charts (flagged and corrected readings marked), adherence, timeline, consent, messages, pending decisions inline, and "Ask Sage to follow up".
+- **Analyses** on the manager's Daytona computer: start one (standard, large or GPU), follow it live (four phases, a ticking timer, every step with its output, Stop), then read the report with its charts and tables. "Shut down computer" deletes the computer.
+- **The conversation**, docked on the right: the same one as the manager's iMessage chat with Trial Ops. Links in replies open the view in the workspace, and decisions open a Face ID sheet. ⌘K goes to a participant, a study or a view, or sends a question. What Trial Ops sends on its own (Sage escalations, alert notices) shows as a toast and badges Alerts.
+- **Notifications**: which alerts Trial Ops texts about, and the morning briefing.
+- **From Classic**: every actionable item has an "Ask Trial Ops" link that switches here and sends the question. It's kept through sign-in.
+
+Sign-in: the manager enters their phone number and Trial Ops texts a one-time link to it, but only to phones an administrator linked (`npm run ops:link` in Patient-AI-Agent). The link lands on `?mode=agentic&signin=…`, and the session is then kept in an `HttpOnly`, `SameSite=Lax` cookie for 7 days.
+
+`agent-proxy.ts`: the browser only calls this site under `/api/agent/*` (its route table lists every path). The server calls the same path under `/v1/` on the Trial Ops API (`TRIAL_OPS_API_URL`, default `http://patient-assistant:3012` on the `web` network). It sends `TRIAL_OPS_API_TOKEN`, the session, and `X-Ops-Origin` (this site's origin from `PUBLIC_URL`). Trial Ops checks the origin against its allowed web origins and picks the Face ID relying party from it. Bodies are capped at 16 KB (64 KB for Face ID responses), and cross-site POSTs are refused. Sign-in links are limited to 5 per IP every 10 minutes and use `PUBLIC_URL`, so a forged Host header can't redirect them. The code lives in `src/agent/` (`Workspace.tsx`, `views/`, `Decide.tsx`, `faceid.ts`, `Chat.tsx`, `CommandBar.tsx`, `workspace.css`).
+
+Without `TRIAL_OPS_API_TOKEN`, Agentic mode says it isn't connected yet and Classic works as before.
 
 ## Database access
 
@@ -45,6 +63,7 @@ npm run dev      # terminal 2, Vite on :5173, proxies /api
 ```sh
 # once, on the server: /opt/apps/ops-home/.env (chmod 600) with
 #   DATABASE_URL=postgres://developer:<password>@clinical-db-postgres-1:5432/clinical_trials
+#   TRIAL_OPS_API_TOKEN=<the Trial Ops API token, the same value Patient-AI-Agent expects in /opt/apps/patient-assistant/.env>
 server/deploy.sh ops-home
 ```
 

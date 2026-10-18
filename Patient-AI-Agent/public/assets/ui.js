@@ -365,7 +365,6 @@ class Verify extends HTMLElement {
     const safari = async () => {
       const { url } = await this.handoff();
       window.open(url, "_blank");
-      cantUse.classList.add("hidden");
       waiting.replaceChildren(
         h("div", { class: "waiting" }, h("b", {}, "Finish in Safari."), h("span", {}, "Confirm with Face ID there, then come back. This page moves on by itself.")),
         h("p", { class: "small muted center", style: "margin-top: 16px" }, "Didn't open? We also texted you the link. Close this card and tap it."));

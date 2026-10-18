@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AlertCard, AlertGroup, AlertStatus, AlertsData } from "../types";
-import { AGENTIC_URL, BLUE, Footer, INK, LocalOnlyNote, MUTED, PANEL, Source, Stale, Status, chip, segment, useApi, useShowAll, useSources } from "../ui";
+import { AskButton, BLUE, Footer, INK, LocalOnlyNote, MUTED, PANEL, Source, Stale, Status, chip, segment, useApi, useShowAll, useSources } from "../ui";
 
 type Tab = AlertStatus | "all";
 const TABS: Array<[Tab, string]> = [["open", "Open"], ["acknowledged", "Acknowledged"], ["resolved", "Resolved"], ["all", "All"]];
@@ -34,7 +34,7 @@ function AlertRow({ a, open, onToggle, onSet }: { a: AlertCard; open: boolean; o
           {a.status !== "resolved" && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               <a href={a.href} style={{ ...action, background: BLUE, color: "#FFFFFF" }}>Review participant</a>
-              <a href={AGENTIC_URL} style={action}>Draft follow-up</a>
+              <AskButton question={`Draft a follow-up for ${a.code} about this alert: "${a.type}". ${a.reason}`} style={action}>Draft follow-up</AskButton>
               {a.status === "open" && <button type="button" onClick={() => onSet("acknowledged")} style={action}>Acknowledge</button>}
               <button type="button" onClick={() => onSet("resolved")} style={action}>Resolve</button>
             </div>

@@ -230,6 +230,19 @@ export async function recordObservation(
   return id;
 }
 
+/** Alerts the study's own rules raised for these readings (e.g. "Home systolic BP at or above 180 mmHg", high). */
+export async function ruleAlerts(q: Query, e: Engagement, observationIds: string[]): Promise<{ name: string; severity: Severity; safety_review: boolean }[]> {
+  if (!observationIds.length) return [];
+  return (await q("select * from assistant.rule_alerts($1, $2::uuid[])", [e.id, observationIds])) as never;
+}
+
+/** One line for the model: which rules alerted the team, so it says so and doesn't escalate again. */
+export function ruleAlertNote(alerts: { name: string; severity: string; safety_review: boolean }[]): string {
+  if (!alerts.length) return "";
+  const what = alerts.map((a) => `${a.name} (${a.severity}${a.safety_review ? ", investigator review" : ""})`).join("; ");
+  return ` The study's safety rules already alerted the study team: ${what}. Don't raise another alert for these readings.`;
+}
+
 export async function dueAssessments(q: Query, e: Engagement): Promise<{ measure_code: string; label: string; due_at: Date }[]> {
   if (!e.participantId) return [];
   return (await q("select * from assistant.due_assessments($1)", [e.id])) as never;
@@ -314,7 +327,7 @@ export async function recentlyCheckedIn(q: Query, engagementId: string, measureC
   return rows.length > 0;
 }
 
-export async function requestEnrollment(q: Query, e: Engagement, visitAt: string): Promise<void> {
+export async function requestEnrollment(q: Query, e: Engagement, visitAt: string | null): Promise<void> {
   await q("select assistant.request_enrollment($1, $2)", [e.id, visitAt]);
 }
 
