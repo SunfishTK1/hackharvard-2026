@@ -18,9 +18,10 @@ const fail = (message: string): never => {
 const local = config.ops.databaseUrl ?? fail("No manager_agent login in your local env files (TRIAL_OPS_DATABASE_URL or MANAGER_AGENT_DATABASE_URL).");
 const db = new URL(local);
 if (decodeURIComponent(db.username) !== "manager_agent") fail(`The Trial Ops login should be manager_agent, not ${db.username}.`);
-db.host = "clinical-db-postgres-1:5432";
+// The same host and TLS as Sage's login on the server (pg_hba only takes encrypted connections).
+db.host = "postgres:5432";
 db.pathname = "/clinical_trials";
-db.search = "";
+db.search = "?sslmode=require";
 const daytona = config.daytona.apiKey ?? fail("No DAYTONA_API_KEY in your local env files.");
 const secret = (() => {
   const out = execFileSync("photon", ["projects", "secret", PROJECT, "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
