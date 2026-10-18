@@ -71,7 +71,7 @@ export function opsHttp(agent: OpsAgent | undefined, followUp: (handle: string, 
         case "approval/options": {
           const a = need(await approvals.view(manager, uuid(String(body.id ?? ""))), "decision");
           if (note !== undefined) await approvals.setNote(manager, a.id, note);
-          return json(res, 200, await approvals.faceIdOptions(manager, a.id));
+          return json(res, 200, await approvals.faceIdOptions(manager, a.id, approvals.MINI_APPS, body.newDevice === true));
         }
         case "approval/verify": {
           const id = uuid(String(body.id ?? ""));

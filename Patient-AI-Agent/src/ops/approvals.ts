@@ -185,9 +185,9 @@ function outcome(row: ApprovalRow): string {
   const code = typeof r.participant === "string" ? r.participant : "The participant";
   const sage = r.sage_told ? " Sage is letting them know." : "";
   switch (row.kind) {
-    case "confirm_enrollment": return `${code} is in the study. ${Number(r.assessments_scheduled ?? 0)} check-ins are scheduled for the next two weeks. Confirmed by ${who}.${sage}`;
+    case "confirm_enrollment": return `${code} is in the study. Check-ins start now: ${Number(r.assessments_scheduled ?? 0)} readings and questionnaires over the next two weeks. Confirmed by ${who}.${sage}`;
     case "decline_enrollment": return `${code} won't be enrolled. Recorded as a screen failure by ${who}.${sage}`;
-    case "activate": return `${code} is active. ${Number(r.assessments_scheduled ?? 0)} check-ins scheduled for the next two weeks.${sage}`;
+    case "activate": return `${code} is active. Check-ins start now: ${Number(r.assessments_scheduled ?? 0)} readings and questionnaires over the next two weeks.${sage}`;
     case "review_safety": return `Safety review for ${code} signed off by ${who}. The alert is resolved.`;
     case "acknowledge_alert": return `Alert for ${code} acknowledged by ${who}.`;
     case "resolve_alert": return `Alert for ${code} resolved by ${who}.`;
@@ -225,10 +225,13 @@ async function passkeys(q: Query, managerId: string, rp: RelyingParty) {
      where manager_id = $1 and (rp_id = $2 or (rp_id is null and $2 = $3)) order by created_at`, [managerId, rp.id, MINI_APPS.id]);
 }
 
-/** WebAuthn options for a challenge key: registers the manager's passkey the first time, otherwise asks for it. */
-async function options(m: Manager, key: string, rp: RelyingParty) {
+/**
+ * WebAuthn options for a challenge key: registers the manager's passkey the first time (or on a new
+ * phone, when asked), otherwise asks for one they have.
+ */
+async function options(m: Manager, key: string, rp: RelyingParty, newDevice = false) {
   const existing = await passkeys(ops, m.id, rp);
-  const opts = existing.length
+  const opts = existing.length && !newDevice
     ? await generateAuthenticationOptions({
         rpID: rp.id,
         userVerification: "required",
@@ -242,15 +245,16 @@ async function options(m: Manager, key: string, rp: RelyingParty) {
         userDisplayName: m.displayName,
         attestationType: "none",
         authenticatorSelection: { residentKey: "preferred", userVerification: "required", authenticatorAttachment: "platform" },
+        excludeCredentials: existing.map((p) => ({ id: p.credential_id, transports: (p.transports ?? undefined) as never })),
       });
-  const mode = existing.length ? "authenticate" as const : "register" as const;
+  const mode = existing.length && !newDevice ? "authenticate" as const : "register" as const;
   challenges.set(key, { challenge: opts.challenge, mode, expires: Date.now() + CHALLENGE_TTL_MS });
   return { mode, options: opts };
 }
 
 /** WebAuthn options for one decision. */
-export async function faceIdOptions(m: Manager, approvalId: string, rp: RelyingParty = MINI_APPS) {
-  return options(m, `${rp.id}:${m.id}:${approvalId}`, rp);
+export async function faceIdOptions(m: Manager, approvalId: string, rp: RelyingParty = MINI_APPS, newDevice = false) {
+  return options(m, `${rp.id}:${m.id}:${approvalId}`, rp, newDevice);
 }
 
 /** Checks a Face ID response against its challenge; returns the passkey that answered. */

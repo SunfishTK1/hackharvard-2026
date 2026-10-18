@@ -1003,6 +1003,7 @@ function confirmScreen(a, alive) {
       if (inSafari || (await faceIdHere())) {
         const sw = window.SimpleWebAuthnBrowser;
         const { mode, options } = await api("approval/options", { id: a.id });
+        lastMode = mode;
         const response = mode === "register" ? await sw.startRegistration({ optionsJSON: options }) : await sw.startAuthentication({ optionsJSON: options });
         return finish((await api("approval/verify", { id: a.id, response, note: text })).approval);
       }
@@ -1019,8 +1020,28 @@ function confirmScreen(a, alive) {
       poll();
     } catch (e) {
       confirm.disabled = false;
+      // Face ID found no passkey for this phone (a new phone, or one set up elsewhere): offer to set it up here.
+      if (e?.name === "NotAllowedError" && lastMode === "authenticate") newPhone.classList.remove("hidden");
       if (inSafari) return offerOverride(e?.name === "NotAllowedError" ? "Face ID was cancelled or isn't set up on this phone. Try again, or confirm by typing your full name below." : `${e?.message || String(e)} You can confirm by typing your full name below.`);
       error.textContent = e?.name === "NotAllowedError" ? "Face ID was cancelled." : e?.message || String(e);
+    }
+  };
+
+  // A passkey for this phone, when Face ID only knows one from another phone.
+  let lastMode = "";
+  const newPhone = h("button", { type: "button", class: "btn soft hidden", style: "width: 100%; margin-top: 14px" }, "Set up Face ID on this phone");
+  newPhone.onclick = async () => {
+    const text = note?.value.trim() || null;
+    newPhone.disabled = true;
+    error.textContent = "";
+    try {
+      const sw = window.SimpleWebAuthnBrowser;
+      const { options } = await api("approval/options", { id: a.id, newDevice: true });
+      const response = await sw.startRegistration({ optionsJSON: options });
+      finish((await api("approval/verify", { id: a.id, response, note: text })).approval);
+    } catch (e) {
+      newPhone.disabled = false;
+      error.textContent = e?.name === "NotAllowedError" ? "Face ID was cancelled or isn't set up on this phone. You can confirm by typing your full name instead." : e?.message || String(e);
     }
   };
 
@@ -1068,6 +1089,7 @@ function confirmScreen(a, alive) {
         h("small", {}, "It goes on the record with your decision.")), note] : null,
       a.sageFollowUp ? h("p", { class: "follow-up" }, h("span", { html: icons.message, style: "display:contents" }), "Sage will let them know in Messages once it's done.") : null,
       waiting,
+      newPhone,
       h("div", { class: "override-row" }, overrideLink),
       overrideBox,
       error),

@@ -196,7 +196,7 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort, followUp
         const note = typeof b.note === "string" ? b.note.slice(0, 1000) : undefined;
         if (step === "options") {
           if (note !== undefined) await approvals.setNote(m, id, note);
-          return send(res, 200, await approvals.faceIdOptions(m, id, site()));
+          return send(res, 200, await approvals.faceIdOptions(m, id, site(), b.newDevice === true));
         }
         if (step === "verify") return send(res, 200, { approval: await decided(id, await approvals.confirm(m, id, b.response as never, note, meta(req), followUp, site()).catch(rethrow)) });
         if (step === "override") return send(res, 200, { approval: await decided(id, await approvals.confirmWithoutFaceId(m, id, String(b.name ?? ""), note, meta(req), followUp).catch(rethrow)) });
