@@ -54,7 +54,7 @@ const SQL = {
 
   // Value alerts carry their observation id in the deduplication key (rule_code:observation_id).
   alerts: `
-    SELECT a.id, a.participant_id, a.study_id, a.severity, a.status, a.created_at, a.resolved_at,
+    SELECT a.id, a.participant_id, a.study_id, a.alert_type, a.reason, a.severity, a.status, a.created_at, a.resolved_at,
       r.rule_type, r.condition->>'op' AS op, m.label, coalesce(o.unit, m.unit) AS unit,
       coalesce(trim_scale(o.numeric_value)::text, o.text_value,
         CASE o.boolean_value WHEN TRUE THEN 'yes' WHEN FALSE THEN 'no' END) AS value,
@@ -173,6 +173,11 @@ const median = (xs: number[]) => {
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
+// First sentence of a free-text alert reason, e.g. "Reported symptom: Dizziness (severe)."
+const firstSentence = (s: string, max = 100) => {
+  const t = (s.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? s).trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + "…" : t;
+};
 const quote = (s: string, max = 140) => `“${s.length > max ? s.slice(0, max - 1).trimEnd() + "…" : s}”`;
 
 function makeClock(tz: string, now: Date) {
@@ -273,6 +278,8 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
   // Hero
   // -------------------------------------------------------------------------
   const highReadings = alerts.filter(isHighReading);
+  const highOther = alerts.filter((a) => a.status === "open" && !isHighReading(a) &&
+    (a.severity === "high" || a.severity === "critical"));
   const decisions = tasks.filter((t) => t.status === "waiting_review" && t.staff_role === "principal_investigator");
   const investigators = new Set(decisions.map((t) => t.staff_name));
 
@@ -285,6 +292,12 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
       : readingPhrases.join(" and ");
     const day = readingDays.size === 1 ? [...readingDays][0] : "recently";
     heroBody += `${list[0].toUpperCase()}${list.slice(1)} came in ${day}. `;
+  }
+  if (highOther.length) {
+    const what = highOther.map((a) => quote(firstSentence(a.reason, 70).replace(/[.!?]$/, ""))).join(", ");
+    heroBody += highReadings.length
+      ? `${word(highOther.length)} other high-severity alert${highOther.length === 1 ? "" : "s"}: ${what}. `
+      : `${word(highOther.length)} high-severity alert${highOther.length === 1 ? "" : "s"} open: ${what}. `;
   }
   if (decisions.length) {
     const enrollments = decisions.filter((t) => t.action_type === "confirm_enrollment").length;
@@ -311,10 +324,11 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     if (a.rule_type === "value_threshold") text = `${reading(a)}. ${state}`;
     else if (a.rule_type === "safety_review") text = `Reported ${quote(a.value ?? a.label, 80)}. ${state}`;
     else if (a.rule_type === "missing_assessments") text = `No replies for ${plural(a.consecutive_days ?? 3, "day")}. ${state}`;
-    else text = `Consent still unsigned. ${state}`;
+    else if (a.rule_type === "consent_overdue") text = `Consent still unsigned. ${state}`;
+    else text = `${firstSentence(a.reason)} ${state}`;
     changes.push({
       at: a.created_at, when: clock.when(a.created_at), text, where: where(p, a.staff_name),
-      tag: a.staff_role === "principal_investigator" ? "Needs investigator" : "Needs coordinator",
+      tag: !a.staff_name ? "Unassigned" : a.staff_role === "principal_investigator" ? "Needs investigator" : "Needs coordinator",
       kind: "need", href: "#waiting",
     });
   }
@@ -348,25 +362,37 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     changes.push({ at: e.occurred_at, when: clock.when(e.occurred_at), text, where: where(p), tag, kind: "info" });
   }
 
+  const conversations = new Map<string, any[]>();
   for (const m of messages.filter((x) => x.message_type === "support" && inWindow(x.at))) {
-    const p = pById.get(m.participant_id);
-    if (!p) continue;
-    if (m.direction === "outbound") {
-      const lastIn = msgsFor(p.id).filter((x) => x.direction === "inbound" && x.at < m.at).at(-1);
-      const quiet = lastIn ? clock.daysBetween(lastIn.at, m.at) : null;
-      const replied = repliedAfter(p.id, m.at);
-      changes.push({
-        at: m.at, when: clock.when(m.at),
-        text: `Study team checked in${quiet && quiet >= 2 ? ` after ${quiet} quiet days` : ""}. ${replied ? "Participant replied." : "No reply."}`,
-        where: where(p, p.coord_name), tag: replied ? "Progress" : "Waiting on participant", kind: "info",
-      });
-    } else if (m.body && m.body !== "STOP") {
-      const answered = answeredAfter(p.id, m.at);
-      changes.push({
-        at: m.at, when: clock.when(m.at), text: `Sent a message: ${quote(m.body, 80)}`, where: where(p, p.coord_name),
-        tag: answered ? "Answered" : "Needs coordinator", kind: answered ? "info" : "need",
-      });
+    if (!pById.has(m.participant_id) || (m.direction === "inbound" && (!m.body || m.body === "STOP"))) continue;
+    conversations.set(m.participant_id, [...(conversations.get(m.participant_id) ?? []), m]);
+  }
+  for (const [pid, ms] of conversations) {
+    const p = pById.get(pid);
+    const last = ms.at(-1);
+    const fromParticipant = ms.filter((m) => m.direction === "inbound");
+    const unanswered = last.direction === "inbound" && !answeredAfter(pid, last.at);
+    let text: string;
+    let tag: string;
+    if (ms.length === 1 && last.direction === "outbound") {
+      const lastIn = msgsFor(pid).filter((x) => x.direction === "inbound" && x.at < last.at).at(-1);
+      const quiet = lastIn ? clock.daysBetween(lastIn.at, last.at) : null;
+      const replied = repliedAfter(pid, last.at);
+      text = `Study team checked in${quiet && quiet >= 2 ? ` after ${quiet} quiet days` : ""}. ${replied ? "Participant replied." : "No reply."}`;
+      tag = replied ? "Progress" : "Waiting on participant";
+    } else if (ms.length === 1) {
+      text = `Sent a message: ${quote(last.body, 80)}`;
+      tag = unanswered ? "Needs coordinator" : "Answered";
+    } else {
+      const latest = fromParticipant.at(-1);
+      text = `${plural(fromParticipant.length, "message")} from the participant, ${plural(ms.length - fromParticipant.length, "reply", "replies")}.` +
+        (latest ? ` Latest: ${quote(latest.body, 70)}` : "");
+      tag = unanswered ? "Needs coordinator" : last.direction === "outbound" && !repliedAfter(pid, last.at) ? "Waiting on participant" : "Progress";
     }
+    changes.push({
+      at: last.at, when: clock.when(last.at), text, where: where(p, p.coord_name), tag,
+      kind: unanswered ? "need" : "info",
+    });
   }
 
   changes.sort((a, b) => (a.kind === b.kind ? a.at.getTime() - b.at.getTime() : a.kind === "need" ? -1 : 1));
@@ -422,7 +448,8 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     }
   }
 
-  for (const a of unresolved) {
+  const sevRank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  for (const a of [...unresolved].sort((x, y) => sevRank[x.severity] - sevRank[y.severity])) {
     if (a.rule_type === "safety_review" && waitingSafety.has(a.id)) continue; // covered by the review task
     const p = pById.get(a.participant_id);
     if (!p) continue;
@@ -445,9 +472,12 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
           ? "Consent unsigned past the deadline."
           : `Consent unsigned ${plural(sent, "day")} after ${reminders ? plural(reminders, "reminder") : "the invitation"}.`;
     } else {
-      text = `${state}: ${a.label ?? humanize(a.rule_type ?? "alert")} ${a.value ?? ""}`.trim();
+      const sev = a.severity === "high" || a.severity === "critical" ? `, ${a.severity}` : "";
+      text = `${state}${sev}: ${firstSentence(a.reason)}`;
     }
-    addItem(a.staff_name, a.staff_role, a.staff_site_id, p, text, a.created_at, "alert");
+    addItem(a.staff_name ?? p.coord_name, a.staff_name ? a.staff_role : "coordinator", a.staff_site_id ?? p.site_id,
+      p, text, a.created_at, "alert");
+    if (!a.staff_name) addItem(p.coord_name, "coordinator", p.site_id, p, "No one is assigned.", null, "");
   }
 
   for (const p of participants) {
@@ -468,10 +498,14 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     }
   }
 
+  const mergeTexts = (all: string[]) => {
+    const texts = [...new Set(all)];
+    return texts.length > 3 ? `${texts.slice(0, 2).join(" ")} +${texts.length - 2} more.` : texts.join(" ");
+  };
   const toPerson = (d: PersonDraft): WaitingPerson => {
     const items = [...d.items.entries()]
       .sort(([, a], [, b]) => (a.since?.getTime() ?? Infinity) - (b.since?.getTime() ?? Infinity))
-      .map(([code, it]): WaitingItem => ({ code, text: [...it.texts, ...it.later].join(" "), age: it.since ? clock.age(it.since) : it.note ?? "" }));
+      .map(([code, it]): WaitingItem => ({ code, text: [mergeTexts(it.texts), ...new Set(it.later)].filter(Boolean).join(" "), age: it.since ? clock.age(it.since) : it.note ?? "" }));
     const dated = [...d.items.values()].filter((it) => it.since).sort((a, b) => a.since!.getTime() - b.since!.getTime());
     const oldest = dated[0];
     return {
@@ -648,12 +682,11 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     const remaining = ps.filter((p) => p.status !== "withdrawn" && p.status !== "screen_failed");
     const sa = unresolved.filter((a) => a.study_id === s.id);
     const open = sa.filter((a) => a.status === "open");
-    const sevRank = { critical: 0, high: 1, medium: 2, low: 3 } as Record<string, number>;
     const top = [...open].sort((a, b) => sevRank[a.severity] - sevRank[b.severity])[0];
     const reviews = tasks.filter((t) => t.study_id === s.id && t.action_type === "review_safety" && t.status === "waiting_review").length;
     const acked = sa.filter((a) => a.status === "acknowledged").length;
     const alertNote = top && (top.severity === "high" || top.severity === "critical")
-      ? `${top.severity[0].toUpperCase()}${top.severity.slice(1)} · ${top.rule_type === "value_threshold" ? `${top.label.toLowerCase()} ${top.value}` : humanize(top.rule_type)}`
+      ? `${top.severity[0].toUpperCase()}${top.severity.slice(1)} · ${top.rule_type === "value_threshold" ? `${top.label.toLowerCase()} ${top.value}` : humanize(top.rule_type ?? top.alert_type ?? "alert")}`
       : reviews ? plural(reviews, "safety review")
       : acked ? `${acked} acknowledged`
       : "None waiting";
@@ -688,7 +721,9 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     dateLabel: `Clinical operations · ${clock.longDate}`,
     hero: {
       headline: [
-        highReadings.length ? `${plural(highReadings.length, "high reading")}.` : "No high readings.",
+        highOther.length
+          ? `${plural(highReadings.length + highOther.length, "high-severity alert")}.`
+          : highReadings.length ? `${plural(highReadings.length, "high reading")}.` : "No high readings.",
         decisions.length ? `${plural(decisions.length, "decision")} waiting.` : "No decisions waiting.",
       ],
       body: heroBody,

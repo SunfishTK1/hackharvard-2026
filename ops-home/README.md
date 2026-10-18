@@ -46,7 +46,8 @@ npm run dev      # terminal 2, Vite on :5173, proxies /api
 # once, on the server: /opt/apps/ops-home/.env (chmod 600) with
 #   DATABASE_URL=postgres://developer:<password>@clinical-db-postgres-1:5432/clinical_trials
 server/deploy.sh ops-home
-server/deploy.sh server/proxy proxy     # picks up server/proxy/sites/ops-home.caddy
 ```
+
+The proxy route (`server/proxy/sites/ops-home.caddy`) is already live. If it ever needs re-adding, copy just that file to `/opt/apps/proxy/sites/` and run `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile` in `/opt/apps/proxy`. A reload doesn't drop other apps' connections. `server/deploy.sh server/proxy proxy` also works, but it deletes any site file on the server that isn't in the repo.
 
 The container joins `web` (for the proxy) and `clinical-db_default` (to reach Postgres without leaving the host).

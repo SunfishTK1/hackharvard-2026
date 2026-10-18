@@ -11,6 +11,8 @@ Find this guide at **https://hackharvard2026.velroi.com**, at `/opt/apps/README.
 | Server guide | https://hackharvard2026.velroi.com | `docs` | This page |
 | iMessage agent | https://apps.hackharvard2026.velroi.com | `photon-demo` | Photon 2.0 iMessage agent (Claude Haiku 5.5). Hosts the mini-apps it builds at `/m/<id>/`. |
 | Clinical trial database | `db.hackharvard2026.velroi.com:5432` (TLS) | `clinical-db` | PostgreSQL 18 + pgvector for the clinical trial project. Read-only browser: https://db.hackharvard2026.velroi.com |
+| Patient assistant | https://patient.hackharvard2026.velroi.com | `patient-assistant` | "Sage", the iMessage study assistant (Patient-AI-Agent): prescreen, e-consent with Face ID, scheduling and check-ins as in-chat mini-apps, on the clinical trial database's `assistant` schema. Shares the Photon 1.0 line with Charles Sprint. |
+| DB Browser | https://dbview.hackharvard2026.velroi.com | `db-browser` | Read-only viewer of every table in the clinical trial database, with foreign-key links. Shared team password. |
 | Trial manager view | https://trial-manager.hackharvard2026.velroi.com | `clinical-trial-manager-view` | Web UI for trial managers |
 | Server load view | https://load.hackharvard2026.velroi.com | `server-load-view` | Live server load dashboard |
 | Trial ops home | https://ops.hackharvard2026.velroi.com | `ops-home` | Portfolio home for trial managers, live from the clinical trials database |
