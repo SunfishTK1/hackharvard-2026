@@ -233,6 +233,22 @@ export function StudyTabs({ nav, current }: { nav: StudyNav; current: string }) 
   );
 }
 
+/** A participant's two views: their overview and their reported data, day by day. */
+export function ParticipantTabs({ code, current }: { code: string; current: "overview" | "reported" }) {
+  const tabs: Array<["overview" | "reported", string, string]> = [
+    ["overview", "Overview", `/participants/${encodeURIComponent(code)}`],
+    ["reported", "Reported data", `/reported/${encodeURIComponent(code)}`],
+  ];
+  return (
+    <nav aria-label="Participant" style={{ display: "flex", alignSelf: "flex-start", padding: 3, borderRadius: 980, background: PANEL }}>
+      {tabs.map(([key, label, href]) => (
+        <a key={key} href={href} aria-current={current === key ? "page" : undefined}
+          style={{ ...segment(current === key), display: "inline-flex", alignItems: "center", textDecoration: "none" }}>{label}</a>
+      ))}
+    </nav>
+  );
+}
+
 export function Crumbs({ items }: { items: Crumb[] }) {
   return (
     <nav aria-label="Breadcrumb" style={{ fontSize: 13, color: MUTED, display: "flex", gap: 6, flexWrap: "wrap" }}>

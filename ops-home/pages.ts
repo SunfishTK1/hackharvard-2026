@@ -1151,6 +1151,8 @@ export async function loadParticipant(db: Queryable, code: string, tz = "America
 
   return {
     generatedAt: now.toISOString(),
+    nav: studyNav(b, s),
+    siteHref: siteHref(si.site_code),
     crumbs: [
       { label: "Studies", href: "/studies" },
       { label: s.intervention ?? s.study_code, href: sHref(s.study_code) },
@@ -1324,6 +1326,7 @@ export async function loadJourneys(db: Queryable, tz = "America/New_York", now =
     });
     return {
       short: s.intervention ?? s.study_code,
+      nav: studyNav(b, s),
       meta: [s.condition, sites.map((x, i) => `${x.institution_name} (${String.fromCharCode(65 + i)})`).join(", ")].filter(Boolean).join(" · "),
       rows,
     };
@@ -1419,7 +1422,7 @@ export async function loadReported(db: Queryable, code: string | null, tz = "Ame
     study: b.studyById.get(p.study_id)?.intervention ?? b.studyById.get(p.study_id)?.study_code ?? "",
     site: b.siteById.get(p.site_id)?.institution_name ?? "",
   }));
-  if (!target) return { generatedAt: now.toISOString(), crumbs: [{ label: "Studies", href: "/studies" }, { label: "Reported data" }], pickers, all, participant: null, days: [], measures: [] };
+  if (!target) return { generatedAt: now.toISOString(), nav: null, siteHref: null, crumbs: [{ label: "Studies", href: "/studies" }, { label: "Reported data" }], pickers, all, participant: null, days: [], measures: [] };
   if (!seen.has(target.id)) {
     pickers.unshift({ code: target.code, study: b.studyById.get(target.study_id)?.intervention ?? "", site: b.siteById.get(target.site_id)?.institution_name ?? "", why: "Selected participant." });
     pickers.splice(4);
@@ -1563,6 +1566,8 @@ export async function loadReported(db: Queryable, code: string | null, tz = "Ame
 
   return {
     generatedAt: now.toISOString(),
+    nav: studyNav(b, s),
+    siteHref: site ? siteHref(site.site_code) : null,
     crumbs: [
       { label: "Studies", href: "/studies" },
       { label: s.intervention ?? s.study_code, href: sHref(s.study_code) },

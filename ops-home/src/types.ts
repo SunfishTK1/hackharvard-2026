@@ -284,6 +284,8 @@ export interface ChatLine {
 
 export interface ParticipantData {
   generatedAt: string;
+  nav: StudyNav;
+  siteHref: string;
   crumbs: Crumb[];
   code: string;
   facts: { label: string; value: string }[];
@@ -362,6 +364,7 @@ export interface JourneyRow {
 
 export interface JourneyStudy {
   short: string;
+  nav: StudyNav;
   meta: string;
   rows: JourneyRow[];
 }
@@ -426,6 +429,8 @@ export interface ReportedPicker {
 
 export interface ReportedData {
   generatedAt: string;
+  nav: StudyNav | null;
+  siteHref: string | null;
   crumbs: Crumb[];
   pickers: ReportedPicker[];
   /** Every participant, for the full selector. */

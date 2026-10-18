@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import type { DayItem, ReportedData, ReportedSlot } from "../types";
-import { BLUE, Crumbs, Footer, INK, MUTED, PANEL, Source, Stale, Status, useApi, useSources } from "../ui";
+import { BLUE, Crumbs, Footer, ParticipantTabs, StudyTabs, INK, MUTED, PANEL, Source, Stale, Status, useApi, useSources } from "../ui";
 
 /** Moves to another participant's data the same way a link would. */
 function goTo(code: string) {
@@ -80,9 +80,11 @@ export default function Reported({ code }: { code: string | null }) {
 
   return (
     <main>
+      {data.nav && data.siteHref && <StudyTabs nav={data.nav} current={data.siteHref} />}
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise page-head" style={{ padding: "72px 24px 28px" }}>
         <Crumbs items={data.crumbs} />
+        {p && <ParticipantTabs code={p.code} current="reported" />}
         <h1 className="page-title">Reported data{p ? <span style={{ color: MUTED }}> · {p.code}</span> : null}</h1>
         <p className="page-lede" style={{ maxWidth: 760 }}>Each scheduled question and reading for one participant, as it was reported. Select a day to see the messages exchanged, how each reply was interpreted, and any alerts it raised.</p>
         <Source show={showSources}>grid: analytics.participant_measurements (one row per expected answer) · day detail: public.messages + public.observations (raw_value, parser_confidence, supersedes_observation_id) + public.alerts</Source>

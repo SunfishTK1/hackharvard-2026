@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import type { AlertStatus, JourneyRow, JourneysData } from "../types";
-import { BLUE, Footer, INK, MUTED, PANEL, Source, Stale, Status, segment, useApi, useSources } from "../ui";
+import { BLUE, Footer, INK, MUTED, PANEL, Source, Stale, Status, StudyTabs, segment, useApi, useSources } from "../ui";
 
 const selectStyle: CSSProperties = { display: "flex", alignItems: "center", gap: 8, minHeight: 42, padding: "0 16px", borderRadius: 980, background: PANEL, fontSize: 14 };
 
@@ -61,6 +61,7 @@ export default function Journeys() {
     .map((st) => ({ ...st, rows: stalledOnly ? st.rows.filter((r) => r.stalled) : st.rows }))
     .filter((st) => st.rows.length > 0);
   const inScope = data.studies.filter((st) => study === "all" || st.short === study);
+  const scoped = study === "all" ? null : data.studies.find((st) => st.short === study) ?? null;
   const stalledCount = inScope.reduce((n, st) => n + st.rows.filter((r) => r.stalled).length, 0);
   const totalCount = inScope.reduce((n, st) => n + st.rows.length, 0);
   // Drop a date tick that would collide with "Today".
@@ -69,6 +70,7 @@ export default function Journeys() {
 
   return (
     <main>
+      {scoped && <StudyTabs nav={scoped.nav} current={scoped.nav.timelines} />}
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise page-head" style={{ paddingBottom: 32 }}>
         <h1 className="page-title">Participant timelines</h1>

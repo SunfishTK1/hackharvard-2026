@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { ParticipantData, SeriesChart } from "../types";
-import { AskButton, BLUE, Crumbs, Footer, INK, MUTED, PANEL, Source, Stale, Status, Tiles, pillLink, useApi, useSources } from "../ui";
+import { AskButton, BLUE, Crumbs, ParticipantTabs, StudyTabs, Footer, INK, MUTED, PANEL, Source, Stale, Status, Tiles, pillLink, useApi, useSources } from "../ui";
 
 const card: CSSProperties = { background: "#FFFFFF", borderRadius: 24, padding: 28, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 };
 const eyebrow: CSSProperties = { fontSize: 15, fontWeight: 600, color: MUTED };
@@ -62,16 +62,17 @@ export default function Participant({ code }: { code: string }) {
 
   return (
     <main>
+      <StudyTabs nav={data.nav} current={data.siteHref} />
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise detail-head" style={{ paddingBottom: 28 }}>
         <Crumbs items={data.crumbs} />
+        <ParticipantTabs code={data.code} current="overview" />
         <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-end", gap: 24 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 600, color: MUTED }}>Participant</div>
             <h1 className="detail-title" style={{ fontVariantNumeric: "tabular-nums" }}>{data.code}</h1>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <a href={`/reported/${encodeURIComponent(data.code)}`} style={pillLink(false)}>Day-by-day data</a>
             <AskButton question={`Tell me about ${data.code}. What's waiting on them, and with whom?`} style={pillLink(false)}>Ask Trial Ops</AskButton>
             <AskButton question={`Draft a follow-up message for ${data.code}.`} style={pillLink(true)}>Draft follow-up</AskButton>
           </div>
