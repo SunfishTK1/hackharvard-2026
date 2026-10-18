@@ -12,7 +12,7 @@ import { ALERT_PREFS, APPROVAL_KINDS, prefs, setPrefs, type ApprovalKind } from 
 export interface OpsToolContext {
   manager: Manager;
   /** Starts a heavy analysis on the manager's Daytona computer; undefined when computers are off. */
-  startAnalysis?(title: string, request: string): Promise<string>;
+  startAnalysis?(title: string, request: string, machine?: "standard" | "large" | "gpu"): Promise<string>;
   /** Stops a running analysis. */
   stopAnalysis?(id: string): Promise<boolean>;
   /** Deletes the manager's computer now. */
@@ -145,10 +145,11 @@ export function opsTools(ctx: OpsToolContext) {
         inputSchema: z.object({
           title: z.string().min(3).max(80).describe("Short name for the analysis, ends with a period"),
           request: z.string().min(20).max(4000).describe("The full brief for the analyst"),
+          machine: z.enum(["standard", "large", "gpu"]).optional().describe("standard (2 CPU, 4 GB) for almost everything; large (4 CPU, 8 GB) for big simulations or many models; gpu (1 NVIDIA GPU, 4 CPU, 16 GB) when they ask for a GPU or the work is deep learning. Default standard."),
         }),
-        run: async ({ title, request }) => {
+        run: async ({ title, request, machine }) => {
           try {
-            const id = await ctx.startAnalysis!(title, request);
+            const id = await ctx.startAnalysis!(title, request, machine);
             await ctx.queueCard("analysis", { id }, { headline: title, subline: "Running on your computer.", badge: "Running" });
             return json({ started: title, analysis_id: id, next: "Its live status card goes out after your reply and updates itself when it's done. Tell them it's started and roughly what they'll get." });
           } catch (error) {

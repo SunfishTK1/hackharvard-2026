@@ -19,18 +19,41 @@ function daytona(): Promise<Daytona> {
   return client;
 }
 
+export type Machine = "standard" | "large" | "gpu";
+export const MACHINES: Machine[] = ["standard", "large", "gpu"];
+
 export interface Computer {
   id: string;
   sandbox: Sandbox;
   cpu: number;
   memory: number;
+  gpu: number;
+  machine: Machine;
 }
 
-interface Row { id: string; sandbox_id: string; status: string; prepared: boolean }
+interface Row { id: string; sandbox_id: string; status: string; prepared: boolean; machine: Machine }
 
-/** The manager's computer, started (and prepared) if needed. `progress` reports the slow steps. */
-export async function computerFor(managerId: string, progress: (text: string) => Promise<void>): Promise<Computer> {
-  const [row] = await ops<Row>("select id, sandbox_id, status, prepared from ops.computers where manager_id = $1 and status in ('starting', 'ready', 'stopped')", [managerId]);
+interface Size { cpu: number; memory: number; disk: number; gpu: number; gpuType?: string }
+const SIZE = (m: Machine): Size =>
+  m === "gpu" ? config.daytona.gpu
+  : m === "large" ? { ...config.daytona.large, gpu: 0 }
+  : { cpu: config.daytona.cpu, memory: config.daytona.memory, disk: config.daytona.disk, gpu: 0 };
+const label = (m: Machine) => {
+  const s = SIZE(m);
+  return `${s.gpu ? `${s.gpu} GPU, ` : ""}${s.cpu} CPU, ${s.memory} GB`;
+};
+
+/**
+ * The manager's computer of this size, started (and prepared) if needed; one of another size is
+ * replaced. `progress` reports the slow steps.
+ */
+export async function computerFor(managerId: string, progress: (text: string) => Promise<void>, machine: Machine = "standard"): Promise<Computer> {
+  let [row] = await ops<Row>("select id, sandbox_id, status, prepared, machine from ops.computers where manager_id = $1 and status in ('starting', 'ready', 'stopped')", [managerId]);
+  if (row && row.machine !== machine) {
+    await progress(`Swapping your ${row.machine} computer for a ${machine === "gpu" ? "GPU" : machine} one.`);
+    await shutDown(managerId);
+    row = undefined as never;
+  }
   if (row) {
     try {
       const sandbox = await (await daytona()).get(row.sandbox_id);
@@ -40,28 +63,43 @@ export async function computerFor(managerId: string, progress: (text: string) =>
       }
       await ops("update ops.computers set status = 'ready', last_used_at = now() where id = $1", [row.id]);
       if (!row.prepared) await prepare(row.id, sandbox, progress);
-      return { id: row.id, sandbox, cpu: sandbox.cpu, memory: sandbox.memory };
+      return { id: row.id, sandbox, cpu: sandbox.cpu, memory: sandbox.memory, gpu: sandbox.gpu ?? 0, machine };
     } catch (error) {
       console.warn("ops: computer gone, starting a new one", (error as Error).message);
       await ops("update ops.computers set status = 'deleted' where id = $1", [row.id]);
     }
   }
-  await progress(`Starting a computer (${config.daytona.cpu} CPU, ${config.daytona.memory} GB).`);
+  await progress(`Starting a ${machine === "gpu" ? "GPU" : machine} computer (${label(machine)}).`);
   const base = {
     language: "python",
     labels: { app: "trial-ops", manager: managerId },
     envVars: { MPLBACKEND: "Agg", PYTHONUNBUFFERED: "1" },
     autoStopInterval: IDLE_STOP_MINUTES,
-    autoDeleteInterval: DELETE_AFTER_STOP_MINUTES,
+    // Daytona only runs GPU computers as ephemeral ones: deleted as soon as they stop.
+    autoDeleteInterval: machine === "gpu" ? 0 : DELETE_AFTER_STOP_MINUTES,
   };
-  const sandbox = config.daytona.snapshot
-    ? await (await daytona()).create({ ...base, snapshot: config.daytona.snapshot }, { timeout: 300 })
-    : await (await daytona()).create({ ...base, image: config.daytona.image, resources: { cpu: config.daytona.cpu, memory: config.daytona.memory, disk: config.daytona.disk } }, { timeout: 600 });
+  const size = SIZE(machine);
+  let sandbox: Sandbox;
+  try {
+    sandbox = config.daytona.snapshot && machine === "standard"
+      ? await (await daytona()).create({ ...base, snapshot: config.daytona.snapshot }, { timeout: 300 })
+      : await (await daytona()).create({
+          ...base, image: config.daytona.image,
+          resources: { cpu: size.cpu, memory: size.memory, disk: size.disk, ...(size.gpu ? { gpu: size.gpu, ...(size.gpuType ? { gpuType: size.gpuType as never } : {}) } : {}) },
+        }, { timeout: 600 });
+  } catch (error) {
+    const message = (error as Error).message ?? String(error);
+    if (machine === "gpu") {
+      const credits = /credit|wallet/i.test(message) ? " The Daytona account needs GPU credits (its Wallet page)." : "";
+      throw new Error(`Daytona couldn't start a GPU computer: ${message.replace(/\.$/, "")}.${credits} A standard or large computer works meanwhile.`);
+    }
+    throw error;
+  }
   const [created] = await ops<{ id: string }>(
-    "insert into ops.computers (manager_id, sandbox_id, status, cpu, memory) values ($1, $2, 'ready', $3, $4) returning id",
-    [managerId, sandbox.id, sandbox.cpu, sandbox.memory]);
+    "insert into ops.computers (manager_id, sandbox_id, status, cpu, memory, gpu, machine) values ($1, $2, 'ready', $3, $4, $5, $6) returning id",
+    [managerId, sandbox.id, sandbox.cpu, sandbox.memory, sandbox.gpu ?? 0, machine]);
   await prepare(created.id, sandbox, progress);
-  return { id: created.id, sandbox, cpu: sandbox.cpu, memory: sandbox.memory };
+  return { id: created.id, sandbox, cpu: sandbox.cpu, memory: sandbox.memory, gpu: sandbox.gpu ?? 0, machine };
 }
 
 /** Installs the Python data stack once per computer. */

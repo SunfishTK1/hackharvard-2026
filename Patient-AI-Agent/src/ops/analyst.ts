@@ -30,8 +30,9 @@ const tail = (text: string, n: number) => (text.length > n ? `…(${text.length 
 
 class Stopped extends Error {}
 
-function analystPrompt(tables: { name: string; rows: number }[], machine: { cpu: number; memory: number }): string {
-  return `You are the analyst for ${config.ops.name}, working for a clinical trial manager on a dedicated Linux computer (Python 3.12, ${machine.cpu} CPU, ${machine.memory} GB RAM, internet for pip). Your working folder has:
+function analystPrompt(tables: { name: string; rows: number }[], machine: { cpu: number; memory: number; gpu: number }): string {
+  const gpu = machine.gpu ? `, ${machine.gpu} NVIDIA GPU (CUDA; check it with nvidia-smi, and pip install torch or what you need to use it)` : "";
+  return `You are the analyst for ${config.ops.name}, working for a clinical trial manager on a dedicated Linux computer (Python 3.12, ${machine.cpu} CPU, ${machine.memory} GB RAM${gpu}, internet for pip). Your working folder has:
 - data/: a fresh snapshot of the clinical trial platform as CSV files, with data/README.md describing every table and column. Tables: ${tables.map((t) => `${t.name} (${t.rows})`).join(", ")}.
 - out/: put every chart and table you want in the report here.
 - work/: your scripts.
@@ -62,12 +63,12 @@ export class Analyst {
   }
 
   /** Starts an analysis in the background. Throws if the manager already has one running. */
-  async start(managerId: string, title: string, request: string): Promise<string> {
+  async start(managerId: string, title: string, request: string, machine: computer.Machine = "standard"): Promise<string> {
     const [busy] = await ops<{ id: string; title: string }>("select id, title from ops.analyses where manager_id = $1 and status = 'running'", [managerId]);
     if (busy) throw new Error(`"${busy.title}" is still running on your computer. One at a time; it'll be done soon, or stop it first.`);
     const [row] = await ops<{ id: string }>("insert into ops.analyses (manager_id, title, request) values ($1, $2, $3) returning id", [managerId, title.slice(0, 120), request.slice(0, 4000)]);
     this.running.set(row.id, { managerId, stopped: false });
-    void this.run(row.id, managerId, title, request).finally(() => this.running.delete(row.id));
+    void this.run(row.id, managerId, title, request, machine).finally(() => this.running.delete(row.id));
     return row.id;
   }
 
@@ -100,14 +101,14 @@ export class Analyst {
       .catch((error) => console.error("ops: progress failed", describeError(error)));
   }
 
-  private async run(id: string, managerId: string, title: string, request: string): Promise<void> {
+  private async run(id: string, managerId: string, title: string, request: string, machine: computer.Machine): Promise<void> {
     let result: AnalysisDone = { id, managerId, title, status: "failed", summary: null, findings: [], files: [], error: null };
     const state = this.running.get(id)!;
     const check = () => {
       if (state.stopped) throw new Stopped("Stopped by you.");
     };
     try {
-      const c = await computer.computerFor(managerId, (text) => this.log(id, { kind: "phase", text }, /Installing/.test(text) ? "installing" : "starting"));
+      const c = await computer.computerFor(managerId, (text) => this.log(id, { kind: "phase", text }, /Installing/.test(text) ? "installing" : "starting"), machine);
       state.computer = c;
       check();
       await ops("update ops.analyses set computer_id = $2 where id = $1", [id, c.id]);

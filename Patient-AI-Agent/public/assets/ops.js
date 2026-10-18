@@ -854,7 +854,7 @@ async function analysisScreen(id, alive) {
     const images = (a.files ?? []).filter((f) => f.kind === "image");
     const others = (a.files ?? []).filter((f) => f.kind !== "image");
     const c = a.computer;
-    const machine = c ? [`${COMPUTER_STATE[c.status] ?? cap(c.status)}`, `${c.cpu} CPU`, `${c.memory} GB`, c.status === "ready" || c.status === "starting" ? `stops after ${c.idleStopMinutes ?? 30} idle minutes` : null].filter(Boolean).join(" · ") : null;
+    const machine = c ? [`${COMPUTER_STATE[c.status] ?? cap(c.status)}`, c.gpu ? `${c.gpu} GPU` : null, `${c.cpu} CPU`, `${c.memory} GB`, c.status === "ready" || c.status === "starting" ? `stops after ${c.idleStopMinutes ?? 30} idle minutes` : null].filter(Boolean).join(" · ") : null;
     const log = a.log ?? (a.progress ?? []).map((p) => ({ kind: "step", when: p.when, text: p.text }));
     const ended = a.status === "failed" || a.status === "cancelled";
     show({ quiet: !first },

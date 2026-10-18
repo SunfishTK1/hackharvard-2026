@@ -96,7 +96,7 @@ export class OpsCore {
       },
       askSage: (code, note) => this.askSage(code, note),
       ...(this.analyst ? {
-        startAnalysis: (title: string, request: string) => this.analyst!.start(m.id, title, request),
+        startAnalysis: (title: string, request: string, machine?: "standard" | "large" | "gpu") => this.analyst!.start(m.id, title, request, machine),
         stopAnalysis: (id: string) => this.analyst!.cancel(m.id, id),
         shutDownComputer: () => computer.shutDown(m.id),
         computerStatus: () => computer.status(m.id),

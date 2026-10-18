@@ -194,7 +194,8 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort) {
       const request = String(b.request ?? "").trim();
       if (title.length < 3 || request.length < 20) throw new ApiError(400, "Give the analysis a title and a request of at least a sentence.");
       try {
-        return send(res, 200, { id: await core.analyst.start(m.id, title, request) });
+        const machine = ["standard", "large", "gpu"].includes(String(b.machine)) ? (String(b.machine) as "standard" | "large" | "gpu") : "standard";
+        return send(res, 200, { id: await core.analyst.start(m.id, title, request, machine) });
       } catch (error) {
         throw new ApiError(409, (error as Error).message);
       }

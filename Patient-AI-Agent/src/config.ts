@@ -163,6 +163,9 @@ export const config = {
     cpu: Number(pick("OPS_COMPUTER_CPU") ?? 2),
     memory: Number(pick("OPS_COMPUTER_MEMORY") ?? 4),
     disk: Number(pick("OPS_COMPUTER_DISK") ?? 10),
+    /** The larger sizes an analysis can ask for. GPU computers need GPU credits on the Daytona account. */
+    large: { cpu: Number(pick("OPS_LARGE_CPU") ?? 4), memory: Number(pick("OPS_LARGE_MEMORY") ?? 8), disk: Number(pick("OPS_LARGE_DISK") ?? 20) },
+    gpu: { cpu: Number(pick("OPS_GPU_CPU") ?? 4), memory: Number(pick("OPS_GPU_MEMORY") ?? 16), disk: Number(pick("OPS_GPU_DISK") ?? 30), gpu: Number(pick("OPS_GPU_COUNT") ?? 1), gpuType: pick("OPS_GPU_TYPE") },
   },
 };
 

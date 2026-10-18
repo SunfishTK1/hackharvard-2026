@@ -755,7 +755,7 @@ export interface AnalysisReport extends AnalysisSummary {
   log: { at: string; when: string; kind: "phase" | "step"; text: string; running?: boolean; exitCode?: number; seconds?: number; detail?: string }[];
   /** Kept for older clients: the log as plain lines. */
   progress: { when: string; text: string }[];
-  computer: { status: string; cpu: number; memory: number; idleStopMinutes: number } | null;
+  computer: { status: string; cpu: number; memory: number; gpu: number; machine: string; idleStopMinutes: number } | null;
   canCancel: boolean;
 }
 
@@ -787,9 +787,9 @@ export async function analyses(q: Query, managerId: string, limit = 20): Promise
 }
 
 export async function analysis(q: Query, managerId: string, id: string, fileUrl: (name: string) => string): Promise<AnalysisReport | undefined> {
-  const [a] = await q<{ id: string; title: string; request: string; status: AnalysisStatus; phase: AnalysisPhase; created_at: Date; finished_at: Date | null; steps: number; summary: string | null; findings: string[]; error: string | null; progress: { at: string; kind?: "phase" | "step"; text: string; running?: boolean; exitCode?: number; seconds?: number; detail?: string }[]; computer_status: string | null; cpu: number | null; memory: number | null }>(
+  const [a] = await q<{ id: string; title: string; request: string; status: AnalysisStatus; phase: AnalysisPhase; created_at: Date; finished_at: Date | null; steps: number; summary: string | null; findings: string[]; error: string | null; progress: { at: string; kind?: "phase" | "step"; text: string; running?: boolean; exitCode?: number; seconds?: number; detail?: string }[]; computer_status: string | null; cpu: number | null; memory: number | null; gpu: number | null; machine: string | null }>(
     `select a.id, a.title, a.request, a.status, a.phase, a.created_at, a.finished_at, a.steps, a.summary, a.findings, a.error, a.progress,
-            c.status computer_status, c.cpu, c.memory
+            c.status computer_status, c.cpu, c.memory, c.gpu, c.machine
      from ops.analyses a left join ops.computers c on c.id = a.computer_id where a.id = $1 and a.manager_id = $2`, [id, managerId]);
   if (!a) return undefined;
   const files = await q<{ name: string; content_type: string; size: number }>(
@@ -809,7 +809,7 @@ export async function analysis(q: Query, managerId: string, id: string, fileUrl:
     phases: phases(a.phase, reached),
     log,
     progress: log.map((e) => ({ when: e.when, text: e.text })),
-    computer: a.computer_status ? { status: a.computer_status, cpu: a.cpu ?? 0, memory: a.memory ?? 0, idleStopMinutes: 30 } : null,
+    computer: a.computer_status ? { status: a.computer_status, cpu: a.cpu ?? 0, memory: a.memory ?? 0, gpu: a.gpu ?? 0, machine: a.machine ?? "standard", idleStopMinutes: 30 } : null,
     canCancel: a.status === "running",
   };
 }
