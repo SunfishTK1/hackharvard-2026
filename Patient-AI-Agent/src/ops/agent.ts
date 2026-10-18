@@ -2,6 +2,7 @@
 // switched the chat to Sage). The core (core.ts) runs the turn; this adapter keeps the chat mode,
 // sends the reply and the cards, and tells the manager when an analysis is done.
 import type { Assistant } from "../agent/assistant.ts";
+import type { Escalation } from "../agent/journey.ts";
 import { describeError } from "../agent/brain.ts";
 import type { ChannelResolver, Conversation } from "../agent/channel.ts";
 import { config } from "../config.ts";
@@ -162,6 +163,39 @@ export class OpsAgent {
       console.log(`ops: welcomed manager ${m.displayName} on ${config.ops.name}' line`);
       return true;
     });
+  }
+
+  /**
+   * Sage escalated a case: every manager linked to that study hears at once, whatever its severity
+   * (unless they turned alert texts off), with the alert card. It's claimed in ops.notices like the
+   * notifier's alerts, so neither sends it twice. The row is written in Sage's transaction, so this
+   * waits a moment for it to be visible.
+   */
+  async escalated(x: Escalation): Promise<void> {
+    type Row = { participant_code: string | null; study_code: string; site_name: string | null; severity: string; reason: string; assignee: string | null; assignee_role: string | null };
+    let row: Row | undefined;
+    for (let i = 0; i < 30 && !row; i++) {
+      [row] = x.kind === "alert"
+        ? await ops<Row>("select participant_code, study_code, site_name, severity, reason, assignee, assignee_role from ops.alerts where id = $1", [x.id])
+        : await ops<Row>(`select null participant_code, t.study_code, null site_name, coalesce(t.payload->>'severity', $2) severity, coalesce(t.payload->>'reason', $3) reason, null assignee, null assignee_role
+                          from ops.tasks t where t.id = $1`, [x.id, x.severity, x.reason]);
+      if (!row) await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!row) return; // rolled back
+    const managers = await ops<{ id: string }>(
+      `select distinct m.id from ops.managers m join ops.manager_staff ms on ms.manager_id = m.id join ops.staff s on s.staff_user_id = ms.staff_user_id
+       join ops.studies st on st.id = s.study_id where st.study_code = $1 and m.is_active and s.is_active and m.prefs->>'alerts' <> 'off'`, [row.study_code]);
+    const who = row.participant_code ?? `someone screening for ${row.study_code}`;
+    const owner = row.assignee ? ` ${row.assignee} (${row.assignee_role === "principal_investigator" ? "investigator" : row.assignee_role ?? "staff"}) has it.` : "";
+    const reason = row.reason.length > 300 ? `${row.reason.slice(0, 299)}…` : row.reason;
+    const text = `Sage escalated ${who} (${row.severity}): ${reason.replace(/\.?$/, ".")}${owner}`;
+    for (const m of managers) {
+      const [claimed] = await ops<{ ref: string }>(
+        "insert into ops.notices (manager_id, kind, ref) values ($1, 'alert', $2) on conflict do nothing returning ref", [m.id, x.kind === "alert" ? x.id : `task:${x.id}`]);
+      if (!claimed) continue;
+      await this.proactive(m.id, text, x.kind === "alert" ? { view: "alert", params: { id: x.id } } : undefined);
+    }
+    if (managers.length) console.log(`ops: told ${managers.length} manager(s) about Sage's escalation (${row.study_code}, ${row.severity})`);
   }
 
   /** The morning briefing: a turn written for the day, with the portfolio card. */
