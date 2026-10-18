@@ -60,6 +60,20 @@ npm run chat -- +16175550123
 npm run enroll -- +16175550123 --due-now     # --due-now opens today's check-in assessments
 ```
 
+## Trial Ops: the trial manager's agent
+
+**Trial Ops** (`src/ops`) is the study team's side, in the same service: an iMessage agent and mini-apps on the same data as the ops website (https://ops.hackharvard2026.velroi.com). A manager asks "what needs my attention today?", "which enrollments are waiting on me?", "show me STUDY-005-P010's blood pressure" or "spin up a computer and forecast enrollment against target", and gets a short answer plus a mini-app card.
+
+- **Line.** Its own Photon project, "Trial Ops", with its own line per person (Thomas texts +1 415-603-5536, Bessie +1 646-579-2868; `photon spectrum users list --project b20be7b3-1c05-43ce-8a34-cc6c2a442ac9`). Every text there goes to Trial Ops; people who aren't linked managers are told the line is for study teams. Without `TRIAL_OPS_SPECTRUM_PROJECT_ID`/`_SECRET`, linked managers reach it on Sage's line by texting "ops" ("sage" switches back).
+- **Who.** Only phones an administrator links: `npm run ops:link -- +16175550123 "Jordan Lee" --managers` (every study's trial manager identity) or `--as drew.foster,riley.adams`. `npm run ops:link -- --list` shows them.
+- **Data.** It runs as the platform's `manager_agent` role (`TRIAL_OPS_DATABASE_URL`) and reads only the `ops.*` views (migration `20261018010000_trial_ops`): studies, sites, participants, consents, events, alerts, tasks, assessments, readings, the message log, and Sage's funnel. No contact details, signatures or consent evidence.
+- **Mini-apps** (`/o/<token>`, `public/ops.html`): portfolio, decisions, alert queue and alert, study, participant (readings charts), pipeline, data quality, and analyses.
+- **Decisions.** Confirm or decline an enrollment, record a baseline visit, sign off a safety review, acknowledge or resolve an alert. The agent only prepares them (`ops.approvals`); the manager confirms with Face ID (a passkey; in Photon's iMessage view, a link texted to open in Safari), and `ops.execute_approval` carries it out as their own staff identity for that study, which the platform's triggers check. Sage then tells the participant when Sage is their contact.
+- **Analyses on Daytona.** "Spin up a computer…" hands the work to an analyst agent on the manager's own Daytona sandbox (Python data stack; 2 CPU / 4 GB by default) with a fresh CSV snapshot of the `ops.*` views, minus message text. Its live status card (computer, data, each step with timing, report) updates in place when done, and the report (summary, findings, charts, tables) stays in `ops.analyses`. One at a time per manager; computers stop after 30 idle minutes. Needs `DAYTONA_API_KEY`.
+- **For other apps.** The core is channel-free (`core.ts`). The ops website's Agentic mode uses the internal API (`api.ts`, port 3012 on the Docker network, `TRIAL_OPS_API_TOKEN`): sign-in by a link texted to the manager, chat in the same conversation as iMessage, every view, mini-app links, analyses. `src/ops/index.ts` exports everything for use in code.
+
+Sage's writes follow the platform's conventions so ops sees Sage's participants like any other (migration `20261018000000_ops_data_flow`): readings are judged by each study's alert rules, every alert is assigned (the investigator gets safety reviews, with a review task), a second check-in in the same window corrects the first, consent steps are participant events, and enrollment requests go to the site investigator.
+
 ## Databases
 
 The deployed assistant runs on `clinical_trials`, the platform's database, with the platform team's five synthetic studies (STUDY-001 migraine, -002 type 2 diabetes, -003 depression, -004 solid tumors, -005 hypertension). New contacts start on the most recently updated active study (or `DEFAULT_STUDY`), and Sage switches to the one that matches what the person is looking for (`choose_study`). People who reach consent become real (synthetic) participants there, numbered after the study's own (`STUDY-001-P009`).

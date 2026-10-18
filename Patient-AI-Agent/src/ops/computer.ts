@@ -1,7 +1,7 @@
 // A Daytona computer for a manager's analyses: one cloud sandbox each, created on first use with the
 // Python data stack, stopped by Daytona when idle and deleted a while after. It holds only the data
 // snapshot an analysis uploads (export.ts): no database access, credentials or API keys.
-import { Daytona, type Sandbox } from "@daytona/sdk";
+import type { Daytona, Sandbox } from "@daytona/sdk";
 import { config } from "../config.ts";
 import { ops } from "./db.ts";
 
@@ -11,10 +11,11 @@ const PACKAGES = "pandas numpy scipy statsmodels matplotlib seaborn scikit-learn
 const IDLE_STOP_MINUTES = 30;
 const DELETE_AFTER_STOP_MINUTES = 240;
 
-let client: Daytona | undefined;
-function daytona(): Daytona {
+let client: Promise<Daytona> | undefined;
+/** The Daytona client, loaded on first use: the SDK is large, and most hours nobody runs an analysis. */
+function daytona(): Promise<Daytona> {
   if (!config.daytona.apiKey) throw new Error("Daytona isn't set up: set DAYTONA_API_KEY.");
-  client ??= new Daytona({ apiKey: config.daytona.apiKey, apiUrl: config.daytona.apiUrl, target: config.daytona.target });
+  client ??= import("@daytona/sdk").then(({ Daytona }) => new Daytona({ apiKey: config.daytona.apiKey, apiUrl: config.daytona.apiUrl, target: config.daytona.target }));
   return client;
 }
 
@@ -32,7 +33,7 @@ export async function computerFor(managerId: string, progress: (text: string) =>
   const [row] = await ops<Row>("select id, sandbox_id, status, prepared from ops.computers where manager_id = $1 and status in ('starting', 'ready', 'stopped')", [managerId]);
   if (row) {
     try {
-      const sandbox = await daytona().get(row.sandbox_id);
+      const sandbox = await (await daytona()).get(row.sandbox_id);
       if (sandbox.state !== "started") {
         await progress("Waking up your computer.");
         await sandbox.start(180);
@@ -54,8 +55,8 @@ export async function computerFor(managerId: string, progress: (text: string) =>
     autoDeleteInterval: DELETE_AFTER_STOP_MINUTES,
   };
   const sandbox = config.daytona.snapshot
-    ? await daytona().create({ ...base, snapshot: config.daytona.snapshot }, { timeout: 300 })
-    : await daytona().create({ ...base, image: config.daytona.image, resources: { cpu: config.daytona.cpu, memory: config.daytona.memory, disk: config.daytona.disk } }, { timeout: 600 });
+    ? await (await daytona()).create({ ...base, snapshot: config.daytona.snapshot }, { timeout: 300 })
+    : await (await daytona()).create({ ...base, image: config.daytona.image, resources: { cpu: config.daytona.cpu, memory: config.daytona.memory, disk: config.daytona.disk } }, { timeout: 600 });
   const [created] = await ops<{ id: string }>(
     "insert into ops.computers (manager_id, sandbox_id, status, cpu, memory) values ($1, $2, 'ready', $3, $4) returning id",
     [managerId, sandbox.id, sandbox.cpu, sandbox.memory]);
@@ -103,7 +104,7 @@ export async function status(managerId: string): Promise<{ status: string; cpu: 
   if (!row) return undefined;
   if (row.status === "ready" || row.status === "stopped") {
     try {
-      const sandbox = await daytona().get(row.sandbox_id);
+      const sandbox = await (await daytona()).get(row.sandbox_id);
       const now = sandbox.state === "started" ? "ready" : sandbox.state === "stopped" || sandbox.state === "archived" ? "stopped" : row.status;
       if (now !== row.status) await ops("update ops.computers set status = $2 where sandbox_id = $1", [row.sandbox_id, now]);
       return { status: now, cpu: row.cpu, memory: row.memory, lastUsed: row.last_used_at };
@@ -120,7 +121,7 @@ export async function shutDown(managerId: string): Promise<boolean> {
   const [row] = await ops<{ id: string; sandbox_id: string }>("select id, sandbox_id from ops.computers where manager_id = $1 and status in ('starting', 'ready', 'stopped')", [managerId]);
   if (!row) return false;
   try {
-    await (await daytona().get(row.sandbox_id)).delete(120);
+    await (await (await daytona()).get(row.sandbox_id)).delete(120);
   } catch (error) {
     console.warn("ops: deleting the computer", (error as Error).message);
   }
