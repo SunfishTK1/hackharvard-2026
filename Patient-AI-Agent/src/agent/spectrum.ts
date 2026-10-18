@@ -85,6 +85,13 @@ export class SpectrumChannel implements ChannelResolver {
     return this.conversation(space, thread.handle);
   }
 
+  /** A direct chat with a handle on this line (on shared lines, only the project's registered users). */
+  async open(handle: string): Promise<Conversation | undefined> {
+    if (!this.app) return undefined;
+    const space = await imessage(this.app).space.create(handle);
+    return this.conversation(space, handle);
+  }
+
   private conversation(space: Space, handle: string): Conversation {
     return {
       channel: "imessage",

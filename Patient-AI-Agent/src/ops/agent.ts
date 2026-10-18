@@ -134,6 +134,36 @@ export class OpsAgent {
     });
   }
 
+  /**
+   * The first text to a newly linked manager on Trial Ops' own line, with today's portfolio card,
+   * so their chat exists before they write. Once: afterwards they have a thread. False if no channel
+   * could open a chat with them.
+   */
+  welcome(managerId: string): Promise<boolean> {
+    return this.core.serial(managerId, async () => {
+      const m = await store.managerById(ops, managerId);
+      if (!m || (await store.threadFor(ops, m.id))?.externalSpaceId) return false;
+      let conversation: Conversation | undefined;
+      for (const channel of this.channels) {
+        conversation = await channel.open?.(m.handle).catch((error) => {
+          console.error("ops: couldn't open a chat", describeError(error));
+          return undefined;
+        });
+        if (conversation) break;
+      }
+      if (!conversation) return false;
+      const thread = await store.ensureThread(ops, m.id, conversation.externalSpaceId);
+      const first = m.displayName.split(" ")[0];
+      const text = `Hi ${first}, this is ${config.ops.name}, the study team's assistant. Ask me what needs your attention, about any study, site or participant, for a decision to confirm with Face ID, or to spin up a computer for a heavy analysis. Here's today.`;
+      const link = await this.core.link(m, "home", {});
+      await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", body: text });
+      await store.addMessage(ops, { threadId: thread.id, direction: "outbound", author: "agent", kind: "card", body: link.title, link: { view: link.view, title: link.title, url: link.url } });
+      await this.deliver(conversation, thread.id, { text, links: [link] });
+      console.log(`ops: welcomed manager ${m.displayName} on ${config.ops.name}' line`);
+      return true;
+    });
+  }
+
   /** The morning briefing: a turn written for the day, with the portfolio card. */
   briefing(managerId: string): Promise<void> {
     return this.core.serial(managerId, async () => {

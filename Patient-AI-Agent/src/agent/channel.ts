@@ -22,4 +22,6 @@ export interface Conversation {
 /** Finds a live conversation for a stored thread, to message people outside a reply. */
 export interface ChannelResolver {
   resolve(thread: Thread): Promise<Conversation | undefined>;
+  /** Starts a conversation with someone who hasn't written yet, where the channel can. */
+  open?(handle: string): Promise<Conversation | undefined>;
 }

@@ -45,6 +45,7 @@ export class Notifier {
     try {
       const managers = await ops<{ id: string; prefs: Prefs; created_at: Date }>("select id, prefs, created_at from ops.managers where is_active");
       for (const m of managers) {
+        await this.welcome(m.id).catch((error) => console.error("ops: welcome failed", describeError(error)));
         await this.alerts(m.id, m.prefs, m.created_at).catch((error) => console.error("ops: alert notice failed", describeError(error)));
         await this.briefing(m.id, m.prefs, now).catch((error) => console.error("ops: briefing failed", describeError(error)));
       }
@@ -53,6 +54,16 @@ export class Notifier {
     } finally {
       this.running = false;
     }
+  }
+
+  /** A newly linked manager with no chat yet gets a first text (tried once per process start). */
+  private readonly welcomed = new Set<string>();
+  private async welcome(managerId: string): Promise<void> {
+    if (this.welcomed.has(managerId)) return;
+    const [t] = await ops<{ external_space_id: string | null }>("select external_space_id from ops.threads where manager_id = $1", [managerId]);
+    if (t?.external_space_id) return void this.welcomed.add(managerId);
+    this.welcomed.add(managerId);
+    await this.agent.welcome(managerId);
   }
 
   private async alerts(managerId: string, prefs: Prefs, linkedAt: Date): Promise<void> {
