@@ -1,7 +1,7 @@
 // Face ID in Safari for a card opened where it can't run (Photon's iMessage view). The one-time
 // link names the pending action; a passkey (Face ID) verifies the person, the server completes the
 // action, and the card in Messages moves on by itself.
-import { actionbar, h, icons } from "./ui.js?v=9";
+import { actionbar, h, icons } from "./ui.js?v=10";
 
 const app = document.getElementById("app");
 const dock = document.getElementById("dock");

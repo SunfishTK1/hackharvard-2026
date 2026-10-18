@@ -135,6 +135,16 @@ export const config = {
     /** The internal API other apps (the ops website) use; off without a token. Never proxied publicly. */
     apiPort: Number(pick("TRIAL_OPS_API_PORT") ?? 3012),
     apiToken: pick("TRIAL_OPS_API_TOKEN"),
+    /**
+     * Face ID on the ops website: the passkey relying party, the parent domain of the mini-apps' host
+     * (patient.hackharvard2026.velroi.com -> hackharvard2026.velroi.com) so it covers ops.* too.
+     */
+    get webRpId(): string {
+      const explicit = pick("TRIAL_OPS_WEB_RP_ID");
+      if (explicit) return explicit;
+      const labels = new URL(publicUrl).hostname.split(".");
+      return labels.length > 2 ? labels.slice(1).join(".") : labels.join(".");
+    },
     /** Where a web sign-in link may send the manager back to. */
     webOrigins: (pick("TRIAL_OPS_WEB_ORIGINS") ?? "https://ops.hackharvard2026.velroi.com,http://localhost:3000,http://localhost:5173")
       .split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),

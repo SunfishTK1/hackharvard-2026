@@ -29,7 +29,7 @@ startWebServer(knowledge, new Forms(knowledge, assistant), assistant, config.por
   opsAgent ? opsHttp(opsAgent, (handle, note) => assistant.nudge(handle, note)) : undefined);
 startRouterServer(router, assistant);
 if (opsAgent) {
-  startOpsApi(opsAgent);
+  startOpsApi(opsAgent, config.ops.apiPort, (handle, note) => assistant.nudge(handle, note));
   new Notifier(opsAgent).start();
   // When Sage escalates a case, the study's managers hear from Trial Ops right away.
   assistant.journey.onEscalation((x) => void opsAgent.escalated(x).catch((error) => console.error("ops: escalation notice failed", describeError(error))));

@@ -11,6 +11,7 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
+import { randomUUID } from "node:crypto";
 import { config } from "../config.ts";
 import type { Query } from "../db.ts";
 import { ops, opsTx } from "./db.ts";
@@ -172,6 +173,11 @@ async function describe(q: Query, m: Manager, row: ApprovalRow): Promise<Approva
 }
 
 function outcomeText(row: ApprovalRow): string {
+  const text = outcome(row);
+  return row.verifiedMethod === "override" ? `${text} Confirmed without Face ID.` : text;
+}
+
+function outcome(row: ApprovalRow): string {
   const r = row.result ?? {};
   const who = typeof r.by === "string" ? r.by : "you";
   const code = typeof r.participant === "string" ? r.participant : "The participant";
@@ -188,107 +194,191 @@ function outcomeText(row: ApprovalRow): string {
 
 // Face ID -----------------------------------------------------------------------------------------
 
+/**
+ * Where Face ID happens: the Trial Ops mini-apps (the default), or the ops website, whose passkeys
+ * belong to the parent domain so they work on its own origin.
+ */
+export interface RelyingParty { id: string; origin: string }
+export const MINI_APPS: RelyingParty = { id: config.rpId, origin };
+
+/** The website's relying party for a site origin, or undefined if that origin may not sign in. */
+export function websiteRp(siteOrigin: string | undefined): RelyingParty | undefined {
+  if (!siteOrigin || !config.ops.webOrigins.includes(siteOrigin)) return undefined;
+  const host = new URL(siteOrigin).hostname;
+  const id = host === "localhost" ? "localhost" : config.ops.webRpId;
+  return host === id || host.endsWith(`.${id}`) ? { id, origin: siteOrigin } : undefined;
+}
+
+type Meta = { ip?: string; userAgent?: string };
+type FollowUp = (handle: string, note: string) => Promise<boolean>;
+
 function uuidBytes(id: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array(Buffer.from(id.replace(/-/g, ""), "hex"));
 }
 
-async function passkeys(q: Query, managerId: string) {
+async function passkeys(q: Query, managerId: string, rp: RelyingParty) {
+  // Mini-app passkeys predate rp_id and keep it null.
   return q<{ id: string; credential_id: string; public_key: Buffer; counter: string; transports: string[] | null }>(
-    "select id, credential_id, public_key, counter, transports from ops.passkeys where manager_id = $1 order by created_at", [managerId]);
+    `select id, credential_id, public_key, counter, transports from ops.passkeys
+     where manager_id = $1 and (rp_id = $2 or (rp_id is null and $2 = $3)) order by created_at`, [managerId, rp.id, MINI_APPS.id]);
 }
 
-/** WebAuthn options: registers the manager's passkey the first time, otherwise asks for it. */
-export async function faceIdOptions(m: Manager, approvalId: string) {
-  const existing = await passkeys(ops, m.id);
-  const options = existing.length
+/** WebAuthn options for a challenge key: registers the manager's passkey the first time, otherwise asks for it. */
+async function options(m: Manager, key: string, rp: RelyingParty) {
+  const existing = await passkeys(ops, m.id, rp);
+  const opts = existing.length
     ? await generateAuthenticationOptions({
-        rpID: config.rpId,
+        rpID: rp.id,
         userVerification: "required",
         allowCredentials: existing.map((p) => ({ id: p.credential_id, transports: (p.transports ?? undefined) as never })),
       })
     : await generateRegistrationOptions({
         rpName: config.ops.name,
-        rpID: config.rpId,
+        rpID: rp.id,
         userID: uuidBytes(m.id),
         userName: m.handle,
         userDisplayName: m.displayName,
         attestationType: "none",
         authenticatorSelection: { residentKey: "preferred", userVerification: "required", authenticatorAttachment: "platform" },
       });
-  const mode = existing.length ? "authenticate" : "register";
-  challenges.set(`${m.id}:${approvalId}`, { challenge: options.challenge, mode, expires: Date.now() + CHALLENGE_TTL_MS });
-  return { mode, options };
+  const mode = existing.length ? "authenticate" as const : "register" as const;
+  challenges.set(key, { challenge: opts.challenge, mode, expires: Date.now() + CHALLENGE_TTL_MS });
+  return { mode, options: opts };
 }
 
-/** Checks Face ID, then carries out the decision. Returns the approval as it ends up. */
-export async function confirm(
-  m: Manager, approvalId: string, response: RegistrationResponseJSON | AuthenticationResponseJSON, note: string | null | undefined,
-  meta: { ip?: string; userAgent?: string }, followUp: (handle: string, note: string) => Promise<boolean>,
-): Promise<ApprovalView> {
-  const pending = challenges.get(`${m.id}:${approvalId}`);
-  challenges.delete(`${m.id}:${approvalId}`);
+/** WebAuthn options for one decision. */
+export async function faceIdOptions(m: Manager, approvalId: string, rp: RelyingParty = MINI_APPS) {
+  return options(m, `${rp.id}:${m.id}:${approvalId}`, rp);
+}
+
+/** Checks a Face ID response against its challenge; returns the passkey that answered. */
+async function checkFaceId(m: Manager, key: string, response: RegistrationResponseJSON | AuthenticationResponseJSON, rp: RelyingParty, meta: Meta): Promise<string> {
+  const pending = challenges.get(key);
+  challenges.delete(key);
   if (!pending || pending.expires < Date.now()) throw new ApprovalError("That took too long. Try again.");
+  if (pending.mode === "register") {
+    const result = await verifyRegistrationResponse({
+      response: response as RegistrationResponseJSON, expectedChallenge: pending.challenge, expectedOrigin: rp.origin, expectedRPID: rp.id, requireUserVerification: true,
+    }).catch(() => ({ verified: false as const, registrationInfo: undefined }));
+    if (!result.verified || !result.registrationInfo) throw new ApprovalError("Face ID couldn't be set up. Try again.");
+    const { credential, credentialDeviceType, credentialBackedUp } = result.registrationInfo;
+    const [r] = await ops<{ id: string }>(
+      `insert into ops.passkeys (manager_id, credential_id, public_key, counter, transports, device_type, backed_up, rp_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+      [m.id, credential.id, Buffer.from(credential.publicKey), credential.counter, credential.transports ?? null, credentialDeviceType, credentialBackedUp,
+        rp.id === MINI_APPS.id ? null : rp.id]);
+    await store.audit(ops, m.id, "passkey_registered", { credential_id: credential.id, rp_id: rp.id }, meta);
+    return r.id;
+  }
+  const auth = response as AuthenticationResponseJSON;
+  const passkey = (await passkeys(ops, m.id, rp)).find((p) => p.credential_id === auth.id);
+  if (!passkey) throw new ApprovalError("That passkey isn't registered for you.");
+  const result = await verifyAuthenticationResponse({
+    response: auth, expectedChallenge: pending.challenge, expectedOrigin: rp.origin, expectedRPID: rp.id, requireUserVerification: true,
+    credential: { id: passkey.credential_id, publicKey: new Uint8Array(passkey.public_key), counter: Number(passkey.counter), transports: (passkey.transports ?? undefined) as never },
+  }).catch(() => ({ verified: false, authenticationInfo: undefined }));
+  if (!result.verified || !result.authenticationInfo) throw new ApprovalError("Face ID didn't match. Try again.");
+  await ops("update ops.passkeys set counter = $2, last_used_at = now() where id = $1", [passkey.id, result.authenticationInfo.newCounter]);
+  return passkey.id;
+}
+
+/** A decision that can be confirmed: pending, theirs, and with its note when it needs one. */
+async function ready(m: Manager, approvalId: string, note: string | null | undefined): Promise<ApprovalRow> {
   const row = await store.approval(ops, m.id, approvalId);
   if (!row) throw new ApprovalError("That decision doesn't exist.");
   if (row.status !== "pending") throw new ApprovalError(`That decision is already ${row.status}.`);
   if (note !== undefined) await store.setApprovalNote(ops, approvalId, note);
   const needs = NEEDS_NOTE[row.kind];
   if (needs && !(note ?? row.note)?.trim()) throw new ApprovalError(`Add a note first: ${needs.replace(/\.$/, "").toLowerCase()}.`);
+  return row;
+}
 
-  // Face ID: register the passkey the first time, otherwise check it.
-  let passkeyId: string;
-  if (pending.mode === "register") {
-    const result = await verifyRegistrationResponse({
-      response: response as RegistrationResponseJSON, expectedChallenge: pending.challenge, expectedOrigin: origin, expectedRPID: config.rpId, requireUserVerification: true,
-    }).catch(() => ({ verified: false as const, registrationInfo: undefined }));
-    if (!result.verified || !result.registrationInfo) throw new ApprovalError("Face ID couldn't be set up. Try again.");
-    const { credential, credentialDeviceType, credentialBackedUp } = result.registrationInfo;
-    const [r] = await ops<{ id: string }>(
-      `insert into ops.passkeys (manager_id, credential_id, public_key, counter, transports, device_type, backed_up)
-       values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-      [m.id, credential.id, Buffer.from(credential.publicKey), credential.counter, credential.transports ?? null, credentialDeviceType, credentialBackedUp]);
-    passkeyId = r.id;
-    await store.audit(ops, m.id, "passkey_registered", { credential_id: credential.id }, meta);
-  } else {
-    const auth = response as AuthenticationResponseJSON;
-    const passkey = (await passkeys(ops, m.id)).find((p) => p.credential_id === auth.id);
-    if (!passkey) throw new ApprovalError("That passkey isn't registered for you.");
-    const result = await verifyAuthenticationResponse({
-      response: auth, expectedChallenge: pending.challenge, expectedOrigin: origin, expectedRPID: config.rpId, requireUserVerification: true,
-      credential: { id: passkey.credential_id, publicKey: new Uint8Array(passkey.public_key), counter: Number(passkey.counter), transports: (passkey.transports ?? undefined) as never },
-    }).catch(() => ({ verified: false, authenticationInfo: undefined }));
-    if (!result.verified || !result.authenticationInfo) throw new ApprovalError("Face ID didn't match. Try again.");
-    await ops("update ops.passkeys set counter = $2, last_used_at = now() where id = $1", [passkey.id, result.authenticationInfo.newCounter]);
-    passkeyId = passkey.id;
-  }
-
-  // Verified: carry it out in one transaction, as the manager's staff identity.
+/** Carries out a confirmed decision as the manager's staff identity, then has Sage tell the participant. */
+async function carryOut(m: Manager, row: ApprovalRow, how: { passkeyId: string } | { overrideName: string }, meta: Meta, followUp: FollowUp): Promise<ApprovalView> {
   try {
     await opsTx(async (q) => {
-      await q("update ops.approvals set status = 'verified', verified_with = $2, verified_at = now() where id = $1 and status = 'pending'", [approvalId, passkeyId]);
-      await q("select ops.execute_approval($1) as outcome", [approvalId]);
+      if ("passkeyId" in how) {
+        await q("update ops.approvals set status = 'verified', verified_with = $2, verified_method = 'passkey', verified_at = now() where id = $1 and status = 'pending'", [row.id, how.passkeyId]);
+      } else {
+        await q("update ops.approvals set status = 'verified', verified_method = 'override', override_name = $2, verified_at = now() where id = $1 and status = 'pending'", [row.id, how.overrideName]);
+      }
+      await q("select ops.execute_approval($1) as outcome", [row.id]);
     });
   } catch (error) {
     const message = (error as { code?: string }).code === "23514" || (error as { code?: string }).code === "42501" ? (error as Error).message : "The platform didn't accept that. Nothing was changed.";
     if (message.startsWith("The platform")) console.error("ops: approval failed", (error as Error).message);
-    await store.failApproval(ops, approvalId, message);
-    await store.audit(ops, m.id, "approval_failed", { approval_id: approvalId, error: message }, meta);
-    return (await view(m, approvalId))!;
+    await store.failApproval(ops, row.id, message);
+    await store.audit(ops, m.id, "approval_failed", { approval_id: row.id, error: message }, meta);
+    return (await view(m, row.id))!;
   }
-  await store.audit(ops, m.id, "approval_confirmed", { approval_id: approvalId, kind: row.kind, method: "passkey" }, meta);
+  await store.audit(ops, m.id, "approval_confirmed", { approval_id: row.id, kind: row.kind, method: "passkeyId" in how ? "passkey" : "override", ...("overrideName" in how ? { name: how.overrideName } : {}) }, meta);
 
   // Sage tells the participant, when it's their contact.
   const follow = SAGE_FOLLOW_UP[row.kind];
   if (follow) {
-    const done = await store.approval(ops, m.id, approvalId);
     const participantId = await participantOf(row);
     const [h] = participantId ? await ops<{ handle: string | null }>("select ops.sage_handle($1) as handle", [participantId]) : [];
-    if (done && h?.handle && (await followUp(h.handle, follow).catch(() => false))) {
-      await ops("update ops.approvals set result = result || '{\"sage_told\": true}' where id = $1", [approvalId]).catch(() => {});
+    if (h?.handle && (await followUp(h.handle, follow).catch(() => false))) {
+      await ops("update ops.approvals set result = result || '{\"sage_told\": true}' where id = $1", [row.id]).catch(() => {});
     }
   }
-  return (await view(m, approvalId))!;
+  return (await view(m, row.id))!;
 }
+
+/** Checks Face ID, then carries out the decision. Returns the approval as it ends up. */
+export async function confirm(
+  m: Manager, approvalId: string, response: RegistrationResponseJSON | AuthenticationResponseJSON, note: string | null | undefined,
+  meta: Meta, followUp: FollowUp, rp: RelyingParty = MINI_APPS,
+): Promise<ApprovalView> {
+  const key = `${rp.id}:${m.id}:${approvalId}`;
+  if (!challenges.has(key)) throw new ApprovalError("That took too long. Try again.");
+  const row = await ready(m, approvalId, note);
+  const passkeyId = await checkFaceId(m, key, response, rp, meta);
+  return carryOut(m, row, { passkeyId }, meta, followUp);
+}
+
+const normal = (name: string) => name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z]+/g, " ").trim();
+
+/**
+ * When Face ID doesn't work: the manager types their full name as it's on file, and the decision
+ * goes through, recorded as confirmed without Face ID (with the name typed).
+ */
+export async function confirmWithoutFaceId(m: Manager, approvalId: string, typedName: string, note: string | null | undefined, meta: Meta, followUp: FollowUp): Promise<ApprovalView> {
+  const name = typedName.trim().replace(/\s+/g, " ").slice(0, 200);
+  if (!name || normal(name) !== normal(m.displayName)) throw new ApprovalError("Type your full name exactly as it's on your Trial Ops account.");
+  const row = await ready(m, approvalId, note);
+  return carryOut(m, row, { overrideName: name }, meta, followUp);
+}
+
+/** One Face ID for several decisions: the options. All must be pending and theirs, with notes where needed. */
+export async function batchOptions(m: Manager, approvalIds: string[], rp: RelyingParty) {
+  const ids = [...new Set(approvalIds)].slice(0, 25);
+  if (!ids.length) throw new ApprovalError("Pick at least one decision.");
+  for (const id of ids) await ready(m, id, undefined);
+  const batchId = randomUUID();
+  batches.set(batchId, { managerId: m.id, ids, expires: Date.now() + CHALLENGE_TTL_MS });
+  return { batchId, ...(await options(m, `${rp.id}:${m.id}:batch:${batchId}`, rp)) };
+}
+
+/** One Face ID for several decisions: checks it once, then carries each out. */
+export async function batchConfirm(m: Manager, batchId: string, response: RegistrationResponseJSON | AuthenticationResponseJSON, meta: Meta, followUp: FollowUp, rp: RelyingParty): Promise<ApprovalView[]> {
+  const batch = batches.get(batchId);
+  batches.delete(batchId);
+  if (!batch || batch.managerId !== m.id || batch.expires < Date.now()) throw new ApprovalError("That took too long. Try again.");
+  const passkeyId = await checkFaceId(m, `${rp.id}:${m.id}:batch:${batchId}`, response, rp, meta);
+  const results: ApprovalView[] = [];
+  for (const id of batch.ids) {
+    try {
+      results.push(await carryOut(m, await ready(m, id, undefined), { passkeyId }, meta, followUp));
+    } catch (error) {
+      const v = await view(m, id);
+      if (v) results.push({ ...v, error: v.error ?? (error as Error).message });
+    }
+  }
+  return results;
+}
+
+const batches = new Map<string, { managerId: string; ids: string[]; expires: number }>();
 
 async function participantOf(row: ApprovalRow): Promise<string | undefined> {
   if (row.kind === "activate") return row.targetId;

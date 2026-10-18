@@ -108,13 +108,14 @@ export interface ApprovalRow {
   status: "pending" | "verified" | "done" | "failed" | "cancelled";
   result: Record<string, unknown> | null;
   error: string | null;
+  verifiedMethod: "passkey" | "override" | null;
   createdAt: Date;
 }
 
 const approvalRow = (r: Record<string, unknown>): ApprovalRow => ({
   id: r.id as string, managerId: r.manager_id as string, kind: r.kind as ApprovalKind, targetId: r.target_id as string, note: (r.note as string | null) ?? null,
   preparedBy: r.prepared_by as "agent" | "manager", status: r.status as ApprovalRow["status"], result: (r.result as Record<string, unknown> | null) ?? null,
-  error: (r.error as string | null) ?? null, createdAt: r.created_at as Date,
+  error: (r.error as string | null) ?? null, verifiedMethod: (r.verified_method as "passkey" | "override" | null) ?? null, createdAt: r.created_at as Date,
 });
 
 export async function createApproval(q: Query, a: { managerId: string; kind: ApprovalKind; targetId: string; note?: string | null; preparedBy: "agent" | "manager" }): Promise<ApprovalRow> {

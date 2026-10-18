@@ -4,7 +4,7 @@
 // short headline, gray pages with white cards, and one glass dock (back, the screen's actions, and
 // a ••• menu to move between screens). Decisions (enrollments, safety reviews, baseline visits,
 // alerts) are prepared here or in chat, and only happen once the manager confirms with Face ID.
-import { actionbar, button, h, icons, optionsMenu, roundButton } from "./ui.js?v=9";
+import { actionbar, button, h, icons, optionsMenu, roundButton } from "./ui.js?v=10";
 
 const app = document.getElementById("app");
 const dock = document.getElementById("dock");
@@ -1007,6 +1007,41 @@ function confirmScreen(a, alive) {
     }
   };
 
+  // When Face ID doesn't work for someone: confirm by typing their full name. It's recorded that way.
+  const nameInput = h("input", { class: "field pill", type: "text", autocomplete: "name", placeholder: "Your full name", "aria-label": "Your full name" });
+  const overrideButton = h("button", { type: "button", class: "btn soft", style: "width: 100%; margin-top: 10px" }, "Confirm without Face ID");
+  const overrideBox = h("div", { class: "hidden override" },
+    h("p", { class: "small muted", style: "margin: 0 4px 10px" }, "Type your full name as it's on your Trial Ops account. The record will show you confirmed without Face ID."),
+    nameInput, overrideButton);
+  const overrideLink = h("button", { type: "button", class: "btn link small" }, "Face ID not working?");
+  overrideLink.onclick = () => {
+    overrideLink.classList.add("hidden");
+    overrideBox.classList.remove("hidden");
+    nameInput.focus();
+  };
+  overrideButton.onclick = async () => {
+    const text = note?.value.trim() || null;
+    if ((a.needsNote || a.kind === "decline_enrollment") && !text) {
+      error.textContent = "Add a note first.";
+      note.focus();
+      return;
+    }
+    if (!nameInput.value.trim()) {
+      error.textContent = "Type your full name.";
+      nameInput.focus();
+      return;
+    }
+    overrideButton.disabled = true;
+    error.textContent = "";
+    try {
+      finish((await api("approval/override", { id: a.id, name: nameInput.value, note: text })).approval);
+    } catch (e) {
+      error.textContent = e?.message || String(e);
+      overrideButton.disabled = false;
+    }
+  };
+  nameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") overrideButton.click(); });
+
   show({ page: "white" },
     h("div", { class: "header" }, h("span", { class: "eyebrow" }, KIND[a.kind] ?? "Decision"), h("h1", { class: "title compact" }, a.title),
       a.preparedBy === "agent" ? h("p", { class: "lede" }, "Prepared in chat. Check it before you confirm.") : null),
@@ -1016,6 +1051,8 @@ function confirmScreen(a, alive) {
         h("small", {}, "It goes on the record with your decision.")), note] : null,
       a.sageFollowUp ? h("p", { class: "follow-up" }, h("span", { html: icons.message, style: "display:contents" }), "Sage will let them know in Messages once it's done.") : null,
       waiting,
+      h("div", { class: "override-row" }, overrideLink),
+      overrideBox,
       error),
     dockBar);
 }

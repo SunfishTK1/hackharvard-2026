@@ -16,12 +16,17 @@
 //   GET  /v1/analyses, GET /v1/analyses/<id>, POST /v1/analyses {title, request},
 //   POST /v1/analyses/<id>/cancel, GET /v1/analyses/<id>/files/<name>, POST /v1/computer/shutdown
 //   GET  /v1/prefs, POST /v1/prefs {alerts?, briefing?}  what Trial Ops texts about on its own
+//   POST /v1/decide {kind, targetId, note?}; GET /v1/approvals/<id>; POST /v1/approvals/<id>/options|verify|override|cancel;
+//   POST /v1/approvals/batch/options {ids}, /v1/approvals/batch/verify {batchId, response}: Face ID on the website
+//   (passkeys for the site in X-Ops-Origin), or a typed name when Face ID doesn't work; several at once.
+//   POST /v1/ask-sage {participant, note}
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { describeError } from "../agent/brain.ts";
 import { config } from "../config.ts";
 import type { OpsAgent } from "./agent.ts";
 import * as computer from "./computer.ts";
+import * as approvals from "./approvals.ts";
 import * as data from "./data.ts";
 import { ops } from "./db.ts";
 import * as store from "./store.ts";
@@ -43,11 +48,11 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function body(req: IncomingMessage, limit = 16_384): Promise<Record<string, unknown>> {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 16_384) throw new ApiError(413, "Too much data.");
+    if (raw.length > limit) throw new ApiError(413, "Too much data.");
   }
   try {
     const value = JSON.parse(raw || "{}");
@@ -56,6 +61,14 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
     throw new ApiError(400, "Body must be JSON.");
   }
 }
+
+class ApprovalApiError extends ApiError {}
+/** Decision errors the manager should read (not authorized, already done, a note missing) become 422s. */
+const rethrow = (error: unknown): never => {
+  if (error instanceof approvals.ApprovalError) throw new ApiError(422, error.message);
+  throw error;
+};
+const meta = (req: IncomingMessage) => ({ ip: String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim(), userAgent: String(req.headers["user-agent"] ?? "").slice(0, 300) });
 
 function authorized(req: IncomingMessage): boolean {
   const given = Buffer.from(String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, ""));
@@ -74,7 +87,7 @@ async function sessionManager(req: IncomingMessage): Promise<store.Manager> {
   return m;
 }
 
-export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort) {
+export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort, followUp: (handle: string, note: string) => Promise<boolean> = async () => false) {
   if (!config.ops.apiToken) {
     console.log("ops: the API for other apps is off (set TRIAL_OPS_API_TOKEN to turn it on)");
     return undefined;
@@ -142,6 +155,65 @@ export function startOpsApi(agent: OpsAgent, port = config.ops.apiPort) {
     const m = await sessionManager(req);
     if (method === "GET" && path === "/v1/me") {
       return send(res, 200, { name: config.ops.name, manager: { name: m.displayName }, studies: await store.managerStudies(ops, m.id), computers: Boolean(core.analyst) });
+    }
+    // Decisions on the website: Face ID with the site's own passkeys, or typed name, one or several at once.
+    const site = () => {
+      const rp = approvals.websiteRp(String(req.headers["x-ops-origin"] ?? "") || undefined);
+      if (!rp) throw new ApprovalApiError(400, "This site can't use Face ID with Trial Ops (X-Ops-Origin).");
+      return rp;
+    };
+    const decided = async (id: string, a: approvals.ApprovalView) => {
+      if (a.status === "done") await core.note(m.id, `They confirmed a decision on the website: ${a.outcome}`);
+      return { ...a, url: (await core.link(m, "approvals", {}, {}, `approval=${id}`)).url };
+    };
+    if (path === "/v1/decide" && method === "POST") {
+      const b = await body(req);
+      const kind = String(b.kind) as store.ApprovalKind;
+      if (!store.APPROVAL_KINDS.includes(kind)) throw new ApiError(400, "Unknown decision.");
+      const a = await approvals.prepare(m, kind, String(b.targetId ?? ""), typeof b.note === "string" ? b.note : null, "manager").catch(rethrow);
+      return send(res, 200, { approval: await decided(a.id, a) });
+    }
+    if (path === "/v1/approvals/batch/options" && method === "POST") {
+      const b = await body(req);
+      const ids = Array.isArray(b.ids) ? b.ids.map(String) : [];
+      return send(res, 200, await approvals.batchOptions(m, ids, site()).catch(rethrow));
+    }
+    if (path === "/v1/approvals/batch/verify" && method === "POST") {
+      const b = await body(req, 65_536);
+      const done = await approvals.batchConfirm(m, String(b.batchId ?? ""), b.response as never, meta(req), followUp, site()).catch(rethrow);
+      return send(res, 200, { approvals: await Promise.all(done.map((a) => decided(a.id, a))) });
+    }
+    const decision = path.match(/^\/v1\/approvals\/([0-9a-f-]{36})(?:\/(options|verify|override|cancel))?$/);
+    if (decision) {
+      const [, id, step = ""] = decision;
+      if (method === "GET" && !step) {
+        const a = await approvals.view(m, id);
+        if (!a) throw new ApiError(404, "No such decision.");
+        return send(res, 200, { approval: await decided(id, a) });
+      }
+      if (method === "POST") {
+        const b = await body(req, step === "verify" ? 65_536 : 16_384);
+        const note = typeof b.note === "string" ? b.note.slice(0, 1000) : undefined;
+        if (step === "options") {
+          if (note !== undefined) await approvals.setNote(m, id, note);
+          return send(res, 200, await approvals.faceIdOptions(m, id, site()));
+        }
+        if (step === "verify") return send(res, 200, { approval: await decided(id, await approvals.confirm(m, id, b.response as never, note, meta(req), followUp, site()).catch(rethrow)) });
+        if (step === "override") return send(res, 200, { approval: await decided(id, await approvals.confirmWithoutFaceId(m, id, String(b.name ?? ""), note, meta(req), followUp).catch(rethrow)) });
+        if (step === "cancel") {
+          const a = await approvals.cancel(m, id);
+          if (!a) throw new ApiError(404, "No such decision.");
+          return send(res, 200, { approval: a });
+        }
+      }
+    }
+    if (path === "/v1/ask-sage" && method === "POST") {
+      const b = await body(req);
+      const participant = String(b.participant ?? "").trim();
+      const note = String(b.note ?? "").trim().slice(0, 400);
+      if (!participant || note.length < 5) throw new ApiError(400, "Say which participant and what Sage should do.");
+      const sent = await core.askSage(participant, note);
+      return send(res, 200, { sent, message: sent ? "Sage will follow up with them now." : "Sage doesn't talk to this participant, so it can't follow up." });
     }
     if (path === "/v1/prefs" && method === "GET") return send(res, 200, { ...(await store.prefs(ops, m.id)), timeZone: config.timeZone });
     if (path === "/v1/prefs" && method === "POST") {

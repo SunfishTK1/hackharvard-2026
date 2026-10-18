@@ -76,6 +76,12 @@ export function opsHttp(agent: OpsAgent | undefined, followUp: (handle: string, 
           if (done.status === "done") await agent?.core.note(manager.id, `They confirmed a decision with Face ID: ${done.outcome}`);
           return json(res, 200, { approval: done });
         }
+        case "approval/override": {
+          const id = uuid(String(body.id ?? ""));
+          const done = await approvals.confirmWithoutFaceId(manager, id, String(body.name ?? ""), note, meta, followUp);
+          if (done.status === "done") await agent?.core.note(manager.id, `They confirmed a decision without Face ID (typed their name): ${done.outcome}`);
+          return json(res, 200, { approval: done });
+        }
         case "approval/handoff": {
           // Face ID in Safari: Photon's iMessage view can't use passkeys, so the manager gets a link.
           const a = need(await approvals.view(manager, uuid(String(body.id ?? ""))), "decision");
