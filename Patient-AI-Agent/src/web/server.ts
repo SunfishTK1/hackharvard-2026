@@ -33,7 +33,7 @@ const SECURITY_HEADERS = {
 const WINDOW_MS = 60_000;
 const MAX_POSTS = 40;
 const posts = new Map<string, number[]>();
-function rateLimited(ip: string): boolean {
+export function rateLimited(ip: string): boolean {
   const now = Date.now();
   const recent = (posts.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
   recent.push(now);
@@ -42,7 +42,7 @@ function rateLimited(ip: string): boolean {
   return recent.length > MAX_POSTS;
 }
 
-export function startWebServer(knowledge: TrialKnowledge, forms: Forms, assistant?: Assistant, port = config.port) {
+export function startWebServer(knowledge: TrialKnowledge, forms: Forms, assistant?: Assistant, port = config.port, opsHttp?: (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>) {
   const server = createServer((req, res) => {
     handle(req, res).catch((error: unknown) => {
       const status = error instanceof HttpError ? error.status : 500;
@@ -74,6 +74,7 @@ export function startWebServer(knowledge: TrialKnowledge, forms: Forms, assistan
     if (path === "/healthz") return text(res, 200, "ok");
     if (path === "/") return file(res, join(PUBLIC, "home.html"));
     if (path === "/vendor/webauthn.js") return file(res, WEBAUTHN_BROWSER);
+    if (opsHttp && (path.startsWith("/o/") || path.startsWith("/api/o/"))) return opsHttp(req, res, url);
     if (path.startsWith("/assets/")) {
       const target = normalize(join(PUBLIC, path));
       if (!target.startsWith(join(PUBLIC, "assets"))) throw new HttpError(404, "Not found");
@@ -207,12 +208,12 @@ function verifyAction(value: unknown): VerifyAction {
   return action;
 }
 
-function clientIp(req: IncomingMessage): string {
+export function clientIp(req: IncomingMessage): string {
   const forwarded = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
   return forwarded || req.socket.remoteAddress || "unknown";
 }
 
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+export async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -229,7 +230,7 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   }
 }
 
-function json(res: ServerResponse, status: number, body: unknown) {
+export function json(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...SECURITY_HEADERS });
   res.end(JSON.stringify(body));
 }
@@ -239,7 +240,7 @@ function text(res: ServerResponse, status: number, body: string) {
   res.end(body);
 }
 
-async function file(res: ServerResponse, path: string) {
+export async function file(res: ServerResponse, path: string) {
   try {
     const body = await readFile(path);
     res.writeHead(200, {

@@ -360,18 +360,20 @@ export class Forms {
     if (!rows.length) throw new HttpError(422, "Answer at least one question.");
     const pressure = bloodPressureProblem(measures, Object.fromEntries(rows.map((r) => [r.m.code, r.value])));
     if (pressure) throw new HttpError(422, pressure);
-    await asPerson(form.personId, async (q) => {
+    const alerted = await asPerson(form.personId, async (q) => {
       if (!(await store.journeyFacts(q, e)).isEnrolled) throw new HttpError(409, "Check-ins start once you're enrolled.");
+      const ids: string[] = [];
       for (const r of rows) {
-        await store.recordObservation(q, e, { measureCode: r.m.code, value: r.value, source: "questionnaire", raw: String(r.value), confidence: 1 }).catch(platformError);
+        ids.push(await store.recordObservation(q, e, { measureCode: r.m.code, value: r.value, source: "questionnaire", raw: String(r.value), confidence: 1 }).catch(platformError));
       }
       await store.setGoalStatus(q, e.id, "daily_check_in", "active", `Last check-in ${new Date().toISOString().slice(0, 10)}`);
       if (form.kind === "checkin") await store.submitForm(q, form, Object.fromEntries(rows.map((r) => [r.m.code, r.shown])));
       else await store.audit(q, form.personId, e.id, "person", "checkin_submitted", { form_id: form.id, measures: rows.map((r) => r.m.code) });
+      return store.ruleAlertNote(await store.ruleAlerts(q, e, ids));
     });
     this.assistant.onFormEvent({
       personId: form.personId, formId: form.id,
-      summary: `They completed a check-in, already saved to their study record: ${rows.map((r) => `${r.m.label} ${r.shown}`).join(", ")}.`,
+      summary: `They completed a check-in, already saved to their study record: ${rows.map((r) => `${r.m.label} ${r.shown}`).join(", ")}.${alerted}`,
       detail: { when: form.kind === "study" ? "Checked in today" : "Thanks for today" },
     });
     const progress = await asPerson(form.personId, (q) => this.progress(q, e, req.trial));
@@ -449,7 +451,7 @@ export class Forms {
       return this.assistant.journey.alertStaff(q, e, urgent && picked.some((s) => URGENT_SYMPTOMS.has(s)) ? "critical" : SEVERITY_LEVEL[severity],
         `Reported in the study page: ${labels} (${severity}).${note ? ` "${note}"` : ""}`,
         urgent ? "Contact the participant now; they were told to call 911 for an emergency." : "Contact the participant and assess for an adverse event.",
-        "adverse_event", `symptom:${[...picked].sort().join("+") || "other"}:${severity}`);
+        "safety_review", `symptom:${[...picked].sort().join("+") || "other"}:${severity}`);
     });
     this.assistant.onFormEvent({
       personId: form.personId, formId: form.id,

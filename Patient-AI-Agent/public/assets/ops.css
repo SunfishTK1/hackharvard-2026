@@ -1,0 +1,176 @@
+/* Trial Ops: what the manager mini-apps add to the Sage design system (styles.css). Same rules:
+   content first, monochrome with one accent, no borders or shadows, glass only on the dock.
+   Severity and status are shown with ink weight (filled, half, hollow), never with new colors. */
+:root {
+  --ink-64: color-mix(in srgb, var(--ink) 64%, transparent);
+  --ink-40: color-mix(in srgb, var(--ink) 40%, transparent);
+  --ink-20: color-mix(in srgb, var(--ink) 20%, transparent);
+  --ink-10: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+main { overflow-wrap: break-word; }
+.title.compact { font-size: 32px; line-height: 1.12; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 32px 4px 12px; }
+.section-head .section-title { margin: 0; }
+.section-head .btn.link { min-height: 32px; padding: 0; font-size: 15px; }
+.empty { padding: 20px 0; font-size: 15px; color: var(--ink-2); }
+
+/* Stat tiles: tappable, two up; the "needs you" tile is solid ink. */
+.tiles { margin-top: 28px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tiles.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tile-btn {
+  min-height: 120px; padding: 18px; border: 0; border-radius: 28px; background: var(--card); color: var(--ink);
+  display: flex; flex-direction: column; justify-content: space-between; gap: 6px; text-align: left; cursor: pointer;
+  transition: transform 0.4s var(--spring);
+}
+div.tile-btn { cursor: default; }
+button.tile-btn:active { transform: scale(0.97); }
+.tile-btn span { font-size: 13px; line-height: 1.3; color: var(--ink-2); }
+.tile-btn b { font-size: 40px; font-weight: 600; line-height: 1.02; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.tile-btn small { font-size: 13px; line-height: 1.3; color: var(--ink-2); }
+.tile-btn.ink { background: var(--ink); color: var(--bg); }
+.tile-btn.ink span, .tile-btn.ink small { color: color-mix(in srgb, var(--bg) 72%, transparent); }
+.tiles.three .tile-btn { min-height: 104px; padding: 14px; border-radius: 22px; }
+.tiles.three .tile-btn b { font-size: 28px; }
+.tiles.three .tile-btn b small { font-size: 15px; color: var(--ink-2); font-weight: 500; letter-spacing: 0; }
+
+/* Rows as a list: generous height, no rules. Tags on the right. */
+.list-row { width: 100%; min-height: 64px; padding: 12px 0; border: 0; background: transparent; color: inherit; display: flex; align-items: center; gap: 12px; text-align: left; }
+button.list-row { cursor: pointer; }
+.list-row .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.list-row .text b { font-size: 17px; font-weight: 600; line-height: 1.3; }
+.list-row .text .label { font-size: 17px; font-weight: 500; line-height: 1.3; }
+.list-row .text small { font-size: 13px; line-height: 1.35; color: var(--ink-2); }
+.list-row .text .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; font-size: 13px; line-height: 1.3; color: var(--ink-2); }
+.list-row .text .meta b { font-size: 13px; font-weight: 600; color: var(--ink); }
+.list-row .end { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.list-row .end small { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.list-row .num { flex: none; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.list-row.top { align-items: flex-start; }
+.list-row.top .sev { margin-top: 7px; }
+.tag.chip-sage { background: var(--ink-10); color: var(--ink); }
+.tag.small { padding: 4px 8px; font-size: 12px; }
+.quote { margin-top: 8px; padding-left: 12px; box-shadow: inset 2px 0 0 var(--ink-20); font-size: 15px; line-height: 1.45; }
+
+/* Severity: ink weight. Critical gets a halo, high is solid, medium half, low hollow. */
+.sev { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--ink); }
+.sev.critical { box-shadow: 0 0 0 3px var(--ink-20); }
+.sev.medium { background: var(--ink-40); }
+.sev.low { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-40); }
+.group-label { display: flex; align-items: center; gap: 8px; margin: 28px 4px 10px; font-size: 15px; font-weight: 600; color: var(--ink-2); }
+.badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+body[data-page="gray"] .badges .tag.muted { background: var(--card); }
+
+/* The study lifecycle as one thin stacked bar, with a legend. */
+.lifecycle { display: flex; height: 6px; margin-top: 10px; border-radius: 980px; overflow: hidden; background: var(--hair); gap: 2px; }
+.lifecycle i { display: block; height: 100%; }
+.lifecycle .active { background: var(--ink); }
+.lifecycle .completed { background: var(--ink-64); }
+.lifecycle .enrolled { background: var(--ink-64); }
+.lifecycle .consented { background: var(--ink-40); }
+.lifecycle .consent_pending { background: var(--ink-20); }
+.lifecycle .withdrawn, .lifecycle .screen_failed { background: var(--ink-10); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 4px 12px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 6px; border-radius: 3px; display: inline-block; }
+
+/* Horizontal bars: label, value, a thin ink fill on the track. */
+.bars { display: flex; flex-direction: column; gap: 16px; padding: 8px 0; }
+.bar-row { display: flex; flex-direction: column; gap: 6px; }
+button.bar-row { border: 0; background: transparent; padding: 0; color: inherit; text-align: left; cursor: pointer; }
+.bar-row .top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.bar-row .top span { min-width: 0; font-size: 15px; font-weight: 500; line-height: 1.3; }
+.bar-row .top b { flex: none; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bar-row .top small { font-weight: 400; color: var(--ink-2); }
+.bar-row .track { height: 8px; border-radius: 980px; background: var(--hair); overflow: hidden; }
+.bar-row .fill { height: 100%; border-radius: 980px; background: var(--ink); transition: width 0.8s var(--spring); }
+.bar-row .fill.soft { background: var(--ink-40); }
+.bar-row .sub { font-size: 13px; color: var(--ink-2); }
+
+/* A study's stages as five small columns. */
+.stages { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-top: 14px; }
+.stages div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stages b { font-size: 21px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stages span { font-size: 12px; line-height: 1.2; color: var(--ink-2); }
+.stages i { height: 4px; border-radius: 980px; background: var(--hair); overflow: hidden; display: block; }
+.stages i em { display: block; height: 100%; background: var(--ink); border-radius: 980px; }
+
+/* Small charts: one line per numeric series; flagged points in the accent, corrected ones faded. */
+.mini-chart { display: block; width: 100%; height: auto; margin-top: 12px; overflow: visible; }
+.mini-chart line { stroke: var(--hair); stroke-width: 1; }
+.mini-chart line.typical { stroke: var(--ink-40); stroke-dasharray: 3 4; }
+.mini-chart polyline { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.mini-chart circle { fill: var(--ink); }
+.mini-chart circle.flagged { fill: var(--accent); }
+.mini-chart circle.superseded { fill: var(--ink-20); }
+.mini-chart circle.wait { fill: var(--bg); stroke: var(--accent); stroke-width: 2.5; }
+.mini-chart text { font: 400 11px var(--font); fill: var(--ink-2); }
+.series-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.series-head h2 { font-size: 17px; font-weight: 600; }
+.series-head span { font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.series-value { margin-top: 6px; display: flex; align-items: baseline; gap: 6px; }
+.series-value b { font-size: 34px; font-weight: 600; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.series-value span { font-size: 15px; color: var(--ink-2); }
+.chart-key { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--ink-2); }
+.chart-key span { display: inline-flex; align-items: center; gap: 6px; }
+.chart-key i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); display: inline-block; }
+.chart-key i.flagged { background: var(--accent); }
+.chart-key i.superseded { background: var(--ink-20); }
+.chart-key i.typ { width: 14px; height: 0; border-radius: 0; background: transparent; border-top: 1.5px dashed var(--ink-40); }
+.chart-key i.wait { background: transparent; box-shadow: inset 0 0 0 2px var(--accent); }
+.dots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--ink); }
+.dots i.no { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ink-40); }
+.entries { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.entries div { display: flex; gap: 12px; font-size: 15px; line-height: 1.35; }
+.entries span { flex: none; width: 76px; color: var(--ink-2); font-size: 13px; padding-top: 2px; }
+.entries .quiet { color: var(--ink-2); }
+
+/* Filters: the segmented control plus small study chips. */
+.filters { margin-top: 24px; display: flex; flex-direction: column; gap: 12px; }
+.chips.small .chip-toggle { min-height: 36px; padding: 0 14px; font-size: 15px; }
+.chips.small .chip-toggle:not([aria-pressed="true"]) { background: var(--card); }
+
+/* A card's tappable header: the title, chips, a quiet note and a chevron. */
+.card-head { width: 100%; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.card-head h2 { min-width: 0; }
+.card-head .grow { flex: 1; }
+.card-head small { font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.ring .big.pct { font-size: 22px; }
+
+/* Analyses: the request quoted, a quiet spinner while it runs, the report, figures and files. */
+.request { margin-top: 16px; color: var(--ink-2); }
+.working { margin-top: 24px; display: flex; align-items: center; gap: 12px; font-size: 15px; color: var(--ink-2); }
+.spinner { width: 18px; height: 18px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--ink-10); border: 2px solid transparent; border-top-color: var(--ink-64); animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.prose p + p { margin-top: 12px; }
+.prose p { font-size: 17px; line-height: 1.5; }
+.figure { display: block; margin-top: 12px; border-radius: 20px; overflow: hidden; background: #fff; }
+.figure:first-of-type { margin-top: 28px; }
+.figure img { display: block; width: 100%; height: auto; }
+.file-icon { width: 28px; height: 28px; flex: none; display: grid; place-items: center; color: var(--ink); }
+.file-icon svg { width: 22px; height: 22px; }
+a.list-row { color: inherit; text-decoration: none; }
+.how { margin-top: 20px; padding: 0 4px; }
+.how summary { font-size: 15px; color: var(--ink-2); }
+.how .card { margin-top: 12px; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card.list.lines .list-row { min-height: 0; padding: 10px 0; }
+
+/* The decision being confirmed. */
+.decision { margin-top: 28px; }
+.decision .card.list .list-row { min-height: 52px; }
+.decision textarea.field { height: auto; min-height: 112px; padding: 14px 16px; border-radius: 20px; resize: vertical; line-height: 1.45; }
+.follow-up { margin-top: 16px; display: flex; gap: 12px; align-items: flex-start; font-size: 15px; color: var(--ink-2); padding: 0 4px; }
+.follow-up svg { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.decision-actions { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+.decision-actions .btn { min-height: 44px; padding: 0 18px; font-size: 15px; }
+
+/* The dock's summary when a screen has no action of its own. */
+.actionbar .summary.nav { padding-left: 10px; }
+.actionbar .inner .btn.round + .summary.nav { padding-left: 2px; }
+
+@media (max-width: 360px) {
+  .tile-btn b { font-size: 32px; }
+  .tiles.three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

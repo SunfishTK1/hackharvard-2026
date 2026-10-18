@@ -110,6 +110,36 @@ export const config = {
   /** Used for people and for sites whose time zone is unset (the platform defaults sites to UTC). */
   timeZone: pick("TIMEZONE") ?? "America/New_York",
   assistantName: pick("ASSISTANT_NAME") ?? "Sage",
+  /**
+   * Trial Ops, the agent for trial managers on the same line. It runs as the platform's
+   * manager_agent role (TRIAL_OPS_DATABASE_URL) and is off without it. OPS_USE_STAFF_DATABASE=1 runs it
+   * on the staff (developer) login instead, for local testing only.
+   */
+  ops: {
+    get databaseUrl(): string | undefined {
+      const url = pick("TRIAL_OPS_DATABASE_URL", "MANAGER_AGENT_DATABASE_URL");
+      if (url) return databaseUrl(url);
+      return pick("OPS_USE_STAFF_DATABASE") === "1" ? config.staffDatabaseUrl : undefined;
+    },
+    model: pick("OPS_MODEL") ?? "claude-opus-5-5",
+    effort: (pick("OPS_EFFORT") ?? "low") as "low" | "medium" | "high",
+    name: pick("OPS_NAME") ?? "Trial Ops",
+    /** The analyst that works on a Daytona computer for heavy analyses. */
+    analystModel: pick("OPS_ANALYST_MODEL") ?? "claude-opus-5-5",
+    analystEffort: (pick("OPS_ANALYST_EFFORT") ?? "medium") as "low" | "medium" | "high",
+  },
+  /** Daytona cloud computers for Trial Ops analyses. Off without an API key. */
+  daytona: {
+    apiKey: pick("DAYTONA_API_KEY", "Daytona_API_Key", "DAYTONA_KEY"),
+    apiUrl: pick("DAYTONA_API_URL"),
+    target: pick("DAYTONA_TARGET"),
+    /** A prepared Daytona snapshot to start from; otherwise IMAGE with the resources below. */
+    snapshot: pick("OPS_COMPUTER_SNAPSHOT"),
+    image: pick("OPS_COMPUTER_IMAGE") ?? "python:3.12",
+    cpu: Number(pick("OPS_COMPUTER_CPU") ?? 2),
+    memory: Number(pick("OPS_COMPUTER_MEMORY") ?? 4),
+    disk: Number(pick("OPS_COMPUTER_DISK") ?? 10),
+  },
 };
 
 export type Config = typeof config;

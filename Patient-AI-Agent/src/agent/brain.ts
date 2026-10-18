@@ -1,19 +1,32 @@
 // One model turn: the SDK's tool runner calls our tools until Claude has its reply.
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.ts";
-import type { assistantTools } from "./tools.ts";
 
-const MAX_ITERATIONS = 8;
+type Tools = Parameters<Anthropic["beta"]["messages"]["toolRunner"]>[0]["tools"];
+
+export interface BrainOptions {
+  model?: string;
+  effort?: "low" | "medium" | "high";
+  /** Adaptive thinking, for models and work that benefit from it. */
+  thinking?: boolean;
+  maxIterations?: number;
+}
 
 export class Brain {
   private readonly client = new Anthropic({ apiKey: config.anthropicApiKey });
+  private readonly options: BrainOptions;
 
-  async reply(system: string, messages: { role: "user" | "assistant"; content: string }[], tools: ReturnType<typeof assistantTools>): Promise<string> {
+  constructor(options: BrainOptions = {}) {
+    this.options = options;
+  }
+
+  async reply(system: string, messages: { role: "user" | "assistant"; content: string }[], tools: Tools): Promise<string> {
     const runner = this.client.beta.messages.toolRunner({
-      model: config.model,
+      model: this.options.model ?? config.model,
       max_tokens: 16000,
-      max_iterations: MAX_ITERATIONS,
-      output_config: { effort: config.effort },
+      max_iterations: this.options.maxIterations ?? 8,
+      output_config: { effort: this.options.effort ?? config.effort },
+      ...(this.options.thinking ? { thinking: { type: "adaptive" as const } } : {}),
       system,
       messages,
       tools,
