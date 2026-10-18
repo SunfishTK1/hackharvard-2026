@@ -4,6 +4,8 @@ export interface AgentLink {
   view: string;
   title: string;
   url: string;
+  /** The view's parameters (study, code, id), when Trial Ops sends them. */
+  params?: Record<string, string>;
 }
 
 export interface AgentMessage {

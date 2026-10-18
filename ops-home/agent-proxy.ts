@@ -8,6 +8,7 @@ import { Readable } from "node:stream";
 const COOKIE = "ops_session";
 const WEEK_SECONDS = 7 * 24 * 3600;
 const MAX_BODY = 16 * 1024;
+const WEBAUTHN_BODY = 64 * 1024; // a Face ID (WebAuthn) response, which can be larger
 const CHAT_TIMEOUT_MS = 90_000;
 const TIMEOUT_MS = 15_000;
 const FILE_TIMEOUT_MS = 60_000;
@@ -30,12 +31,12 @@ function send(res: ServerResponse, status: number, body: unknown, headers: Recor
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function readBody(req: IncomingMessage, limit = MAX_BODY): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY) throw new HttpError(413, "That's too long.");
+    if (size > limit) throw new HttpError(413, "That's too long.");
     chunks.push(chunk as Buffer);
   }
   if (!size) return {};
@@ -96,12 +97,41 @@ function rateLimited(ip: string): boolean {
   return recent.length > SIGN_IN_LIMIT;
 }
 
+/** What the browser may call under /api/agent/ (each goes to the same path under /v1/). */
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const ROUTES: { method: "GET" | "POST"; path: RegExp; timeoutMs?: number; maxBody?: number }[] = [
+  { method: "GET", path: /^me$/ },
+  { method: "GET", path: /^messages$/ },
+  { method: "POST", path: /^chat$/, timeoutMs: CHAT_TIMEOUT_MS },
+  { method: "GET", path: /^views\/[a-z]+$/ },
+  { method: "POST", path: /^link$/ },
+  { method: "GET", path: /^analyses$/ },
+  { method: "POST", path: /^analyses$/, timeoutMs: 30_000 },
+  { method: "GET", path: new RegExp(`^analyses/${UUID}$`, "i") },
+  { method: "POST", path: new RegExp(`^analyses/${UUID}/cancel$`, "i"), timeoutMs: 30_000 },
+  { method: "POST", path: /^computer\/shutdown$/, timeoutMs: 60_000 },
+  // Decisions: prepare one, then Face ID (options, verify), or several at once with one Face ID.
+  { method: "POST", path: /^decide$/, timeoutMs: 20_000 },
+  { method: "POST", path: new RegExp(`^approvals/${UUID}/options$`, "i") },
+  { method: "POST", path: new RegExp(`^approvals/${UUID}/verify$`, "i"), timeoutMs: 60_000, maxBody: WEBAUTHN_BODY },
+  { method: "POST", path: new RegExp(`^approvals/${UUID}/cancel$`, "i") },
+  { method: "GET", path: new RegExp(`^approvals/${UUID}$`, "i") },
+  // Face ID not working: confirmed with the manager's full name instead, and recorded as such.
+  { method: "POST", path: new RegExp(`^approvals/${UUID}/override$`, "i"), timeoutMs: 60_000 },
+  { method: "POST", path: /^approvals\/batch\/options$/, timeoutMs: 30_000 },
+  { method: "POST", path: /^approvals\/batch\/verify$/, timeoutMs: 120_000, maxBody: WEBAUTHN_BODY },
+  { method: "POST", path: /^ask-sage$/, timeoutMs: 20_000 },
+  { method: "GET", path: /^prefs$/ },
+  { method: "POST", path: /^prefs$/ },
+];
+
 export function agentProxy(env: Env) {
   const base = (env.TRIAL_OPS_API_URL ?? "http://patient-assistant:3012").replace(/\/+$/, "");
   const token = env.TRIAL_OPS_API_TOKEN;
 
-  async function upstream(method: string, path: string, options: { body?: unknown; session?: string; timeoutMs?: number } = {}): Promise<Upstream> {
+  async function upstream(method: string, path: string, options: { body?: unknown; session?: string; timeoutMs?: number; origin?: string } = {}): Promise<Upstream> {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+    if (options.origin) headers["X-Ops-Origin"] = options.origin;
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     if (options.session) headers["X-Ops-Session"] = options.session;
     let res: Response;
@@ -120,11 +150,11 @@ export function agentProxy(env: Env) {
   }
 
   /** Streams a report file (a chart, a CSV) through, with the upstream's type and disposition. */
-  async function file(res: ServerResponse, path: string, session: string, clear: Record<string, string>): Promise<void> {
+  async function file(res: ServerResponse, path: string, session: string, origin: string, clear: Record<string, string>): Promise<void> {
     let up: Response;
     try {
       up = await fetch(`${base}${path}`, {
-        headers: { Authorization: `Bearer ${token}`, "X-Ops-Session": session },
+        headers: { Authorization: `Bearer ${token}`, "X-Ops-Session": session, "X-Ops-Origin": origin },
         signal: AbortSignal.timeout(FILE_TIMEOUT_MS),
       });
     } catch (err) {
@@ -155,6 +185,7 @@ export function agentProxy(env: Env) {
       if (method === "POST" && !sameOrigin(req)) throw new HttpError(403, "Cross-site request refused.");
       const session = cookieValue(req, COOKIE);
       const clear = { "Set-Cookie": sessionCookie(req, "", 0) };
+      const origin = siteOrigin(req, env);
 
       // Signing in and out.
       if (route === "sign-in" && method === "POST") {
@@ -164,14 +195,14 @@ export function agentProxy(env: Env) {
         const digits = typeof typed === "string" ? typed.replace(/[\s().-]/g, "") : "";
         const phone = /^\d{10}$/.test(digits) ? `+1${digits}` : digits;
         if (!/^\+[1-9]\d{6,14}$/.test(phone)) throw new HttpError(400, "Enter your phone number with country code, like +1 617 555 0123.");
-        const r = await upstream("POST", "/v1/web/sign-in", { body: { phone, returnTo: `${siteOrigin(req, env)}/?mode=agentic` } });
+        const r = await upstream("POST", "/v1/web/sign-in", { body: { phone, returnTo: `${origin}/?mode=agentic` }, origin });
         send(res, r.status, r.body);
         return true;
       }
       if (route === "session" && method === "POST") {
         const body = await readBody(req);
         if (typeof body.token !== "string" || body.token.length > 200) throw new HttpError(400, "That sign-in link isn't valid.");
-        const r = await upstream("POST", "/v1/web/session", { body: { token: body.token } });
+        const r = await upstream("POST", "/v1/web/session", { body: { token: body.token }, origin });
         const ok = r.status === 200 && typeof (r.body as { session?: unknown }).session === "string";
         if (!ok) {
           send(res, r.status === 200 ? 502 : r.status, r.status === 200 ? { error: "Trial Ops didn't start a session." } : r.body);
@@ -182,22 +213,13 @@ export function agentProxy(env: Env) {
         return true;
       }
       if (route === "sign-out" && method === "POST") {
-        if (session) await upstream("POST", "/v1/web/sign-out", { session }).catch(() => undefined);
+        if (session) await upstream("POST", "/v1/web/sign-out", { session, origin }).catch(() => undefined);
         send(res, 200, { ok: true }, clear);
         return true;
       }
 
       // Everything else needs a session and maps to the same path under /v1/.
-      let target: { method: string; path: string; timeoutMs?: number; body?: boolean } | undefined;
-      if (method === "GET" && route === "me") target = { method, path: "/v1/me" };
-      else if (method === "GET" && route === "messages") target = { method, path: `/v1/messages${search}` };
-      else if (method === "POST" && route === "chat") target = { method, path: "/v1/chat", timeoutMs: CHAT_TIMEOUT_MS, body: true };
-      else if (method === "GET" && /^views\/[a-z]+$/.test(route)) target = { method, path: `/v1/${route}${search}` };
-      else if (method === "POST" && route === "link") target = { method, path: "/v1/link", body: true };
-      else if (method === "GET" && route === "analyses") target = { method, path: "/v1/analyses" };
-      else if (method === "POST" && route === "analyses") target = { method, path: "/v1/analyses", body: true };
-      else if (method === "GET" && /^analyses\/[0-9a-f-]{36}$/i.test(route)) target = { method, path: `/v1/${route}` };
-      else if (method === "POST" && /^analyses\/[0-9a-f-]{36}\/cancel$/i.test(route)) target = { method, path: `/v1/${route}`, body: true };
+      const target = ROUTES.find((r) => r.method === method && r.path.test(route));
       const reportFile = method === "GET" && /^analyses\/[0-9a-f-]{36}\/files\/[A-Za-z0-9._-]{1,120}$/i.test(route);
       if (!target && !reportFile) throw new HttpError(404, "Not found.");
       if (!session) {
@@ -205,11 +227,12 @@ export function agentProxy(env: Env) {
         return true;
       }
       if (reportFile) {
-        await file(res, `/v1/${route}`, session, clear);
+        await file(res, `/v1/${route}`, session, origin, clear);
         return true;
       }
       if (!target) throw new HttpError(404, "Not found.");
-      const r = await upstream(target.method, target.path, { session, timeoutMs: target.timeoutMs, body: target.body ? await readBody(req) : undefined });
+      const body = method === "POST" ? await readBody(req, target.maxBody ?? MAX_BODY) : undefined;
+      const r = await upstream(method, `/v1/${route}${method === "GET" ? search : ""}`, { session, origin, timeoutMs: target.timeoutMs, body });
       send(res, r.status, r.body, r.status === 401 ? clear : {});
     } catch (err) {
       if (err instanceof HttpError) send(res, err.status, { error: err.message });

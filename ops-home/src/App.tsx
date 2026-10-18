@@ -511,9 +511,9 @@ export default function App() {
     return (
       <>
         <Header mode={mode} onMode={switchMode} account={account} onSignOut={signOut} />
-        <main>
+        <div className="agentic-root">
           <Agentic key={session} onAccount={setAccount} />
-        </main>
+        </div>
       </>
     );
   }
