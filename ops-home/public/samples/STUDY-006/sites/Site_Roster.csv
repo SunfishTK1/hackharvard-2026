@@ -1,0 +1,3 @@
+site_id,study_id,institution,city,state,principal_investigator,coordinator,site_status,local_icf_version
+SITE-006-A,STUDY-006,Bayview Pulmonary Research Unit,Boston,MA,Dr. Hannah Okafor,Marcus Bell,Active,1.4-BOS
+SITE-006-B,STUDY-006,Granite State Lung Center,Manchester,NH,Dr. Paul Delgado,Ivy Thompson,Active,1.4-MAN

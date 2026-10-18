@@ -51,6 +51,7 @@ export default function Study({ code }: { code: string }) {
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <AskButton question={`How is ${data.eyebrow.replace(/ study$/, "")} doing? (${code}) What needs attention?`} style={pillLink(true)}>Ask Trial Ops</AskButton>
+            <a href={`/setup/sites?study=${encodeURIComponent(code)}`} style={pillLink(false)}>Add sites</a>
           </div>
         </div>
       </section>

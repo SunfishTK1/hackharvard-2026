@@ -151,7 +151,7 @@ export function useApi<T>(url: string) {
 // Studies lead to their sites, then participants, then each participant's reported data.
 // Alerts and the calendar span every study.
 const NAV: Array<[string, string, (p: string) => boolean]> = [
-  ["Studies", "/studies", (p) => ["/studies", "/sites", "/participants", "/reported", "/journeys"].some((x) => p.startsWith(x))],
+  ["Studies", "/studies", (p) => ["/studies", "/sites", "/participants", "/reported", "/journeys", "/setup"].some((x) => p.startsWith(x))],
   ["Alerts", "/alerts", (p) => p.startsWith("/alerts")],
   ["Calendar", "/calendar", (p) => p.startsWith("/calendar")],
 ];

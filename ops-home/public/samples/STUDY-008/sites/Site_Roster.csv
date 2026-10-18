@@ -1,0 +1,4 @@
+site_id,study_id,institution,city,state,principal_investigator,coordinator,site_status,local_icf_version
+SITE-008-A,STUDY-008,Beacon Heart Failure Program,Boston,MA,Dr. Grace Liu,Tom Becker,Active,1.0-BOS
+SITE-008-B,STUDY-008,Narragansett Cardiology Associates,Providence,RI,Dr. Omar Haddad,Kira Novak,Active,1.0-PRO
+SITE-008-C,STUDY-008,Pioneer Valley Heart Institute,Springfield,MA,Dr. Ellen Brooks,Dev Malhotra,Setup,1.0-SPR
