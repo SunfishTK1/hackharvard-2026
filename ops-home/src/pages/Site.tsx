@@ -24,7 +24,7 @@ export default function Site({ code }: { code: string }) {
 
   return (
     <main>
-      <StudyTabs current="sites" studyHref={data.studyHref} siteHref={`/sites/${encodeURIComponent(code)}`} />
+      <StudyTabs nav={data.nav} current={`/sites/${encodeURIComponent(code)}`} />
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise detail-head" style={{ paddingBottom: 32 }}>
         <Crumbs items={data.crumbs} />

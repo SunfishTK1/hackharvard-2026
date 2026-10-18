@@ -90,7 +90,7 @@ export interface HomeData {
   generatedAt: string;
   priorities?: Priorities;
   dateLabel: string;
-  hero: { headline: [string, string]; body: string };
+  hero: { headline: [string, string]; body: string; points?: { label: string; text: string }[] };
   changes: { heading: string; subheading: string; items: Change[] };
   waiting: {
     groups: WaitingGroup[];
@@ -202,8 +202,16 @@ export interface SiteCard {
   note: string;
 }
 
+/** The tabs on a study's pages: its overview, each of its sites, and its participant timelines. */
+export interface StudyNav {
+  overview: string;
+  sites: { label: string; href: string }[];
+  timelines: string;
+}
+
 export interface StudyData {
   generatedAt: string;
+  nav: StudyNav;
   priorities: Priorities;
   crumbs: Crumb[];
   eyebrow: string;
@@ -234,6 +242,7 @@ export interface SiteParticipantRow {
 
 export interface SiteData {
   generatedAt: string;
+  nav: StudyNav;
   priorities: Priorities;
   crumbs: Crumb[];
   studyHref: string;
@@ -417,7 +426,10 @@ export interface ReportedPicker {
 
 export interface ReportedData {
   generatedAt: string;
+  crumbs: Crumb[];
   pickers: ReportedPicker[];
+  /** Every participant, for the full selector. */
+  all: { code: string; study: string; site: string }[];
   participant: {
     code: string;
     site: string;

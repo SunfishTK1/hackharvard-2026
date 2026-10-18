@@ -19,7 +19,18 @@ function Hero({ data }: { data: HomeData }) {
     <section id="top" className="rise hero">
       <div style={{ fontSize: 17, fontWeight: 600, color: MUTED }}>{data.dateLabel}</div>
       <h1 className="hero-title">{data.hero.headline[0]}<br />{data.hero.headline[1]}</h1>
-      <p className="hero-body">{data.hero.body}</p>
+      {data.hero.points?.length ? (
+        <dl className="hero-points">
+          {data.hero.points.map((pt) => (
+            <div key={pt.label} className="hero-point">
+              <dt>{pt.label}</dt>
+              <dd>{pt.text}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="hero-body">{data.hero.body}</p>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px 28px", marginTop: 10 }}>
         <a href="#priorities-title" className="pill">See top priorities</a>
         <a href="/journeys" style={{ fontSize: 17, textDecoration: "none" }}>Participant timelines →</a>

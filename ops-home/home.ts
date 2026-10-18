@@ -309,6 +309,36 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
   }
   heroBody += `Other work across ${plural(studies.length, "study", "studies")} and ${plural(participants.length, "participant")} is on schedule.`;
 
+  // The same facts as a short labelled list, which reads faster than the paragraph.
+  // Items after the first start lower-case, since they continue one sentence.
+  const listOf = (items: string[], max = 3) => {
+    const shown = items.slice(0, max).map((t, i) => (i ? t[0].toLowerCase() + t.slice(1) : t));
+    return items.length > max ? `${shown.join("; ")}; and ${items.length - max} more` : shown.join("; ");
+  };
+  const heroPoints: { label: string; text: string }[] = [];
+  if (highReadings.length) {
+    const day = readingDays.size === 1 ? [...readingDays][0] : "recently";
+    heroPoints.push({
+      label: `Reported ${day}`,
+      text: listOf(highReadings.map((a) => `${low(a.op) ? "Low" : "High"} ${a.label.toLowerCase()} (${shortCode(pById.get(a.participant_id))})`)),
+    });
+  }
+  if (highOther.length) {
+    heroPoints.push({
+      label: "Other high-severity alerts",
+      text: listOf(highOther.map((a) => `${firstSentence(a.reason, 110).replace(/[.!?]$/, "").replace(/_/g, " ")} (${shortCode(pById.get(a.participant_id))})`), 2),
+    });
+  }
+  if (decisions.length) {
+    const enrollments = decisions.filter((t) => t.action_type === "confirm_enrollment").length;
+    const reviews = decisions.filter((t) => t.action_type === "review_safety").length;
+    heroPoints.push({
+      label: "Waiting on investigators",
+      text: `${[enrollments ? plural(enrollments, "enrollment confirmation") : "", reviews ? plural(reviews, "safety review") : ""].filter(Boolean).join(" and ")}, across ${plural(investigators.size, "investigator")}`,
+    });
+  }
+  heroPoints.push({ label: "Portfolio", text: `${plural(studies.length, "study", "studies")} and ${plural(participants.length, "participant")}` });
+
   // -------------------------------------------------------------------------
   // Since yesterday
   // -------------------------------------------------------------------------
@@ -729,15 +759,13 @@ export async function loadHome(db: Queryable, tz = "America/New_York", now = new
     generatedAt: now.toISOString(),
     dateLabel: `Clinical operations · ${clock.longDate}`,
     hero: {
-      headline: (() => {
-        const high = highReadings.length + highOther.length;
-        const first = high ? `${plural(high, "high-severity alert")} ${high === 1 ? "is" : "are"} open` : "No high-severity alerts are open";
-        const second = decisions.length
-          ? `and ${plural(decisions.length, "decision")} ${decisions.length === 1 ? "is" : "are"} waiting.`
-          : "and no decisions are waiting.";
-        return [`${first},`, second] as [string, string];
-      })(),
+      // Two short lines that fit the hero at full size.
+      headline: [
+        highReadings.length + highOther.length ? `${plural(highReadings.length + highOther.length, "high-severity alert")} open` : "No high-severity alerts open",
+        decisions.length ? `${plural(decisions.length, "decision")} pending` : "No decisions pending",
+      ],
       body: heroBody,
+      points: heroPoints,
     },
     changes: {
       heading: "Changes since yesterday",

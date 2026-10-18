@@ -36,7 +36,7 @@ export default function Study({ code }: { code: string }) {
 
   return (
     <main>
-      <StudyTabs current="overview" studyHref={studyHref} siteHref={data.firstSiteHref} />
+      <StudyTabs nav={data.nav} current={studyHref} />
       <Stale error={error} generatedAt={data.generatedAt} />
       <section className="rise detail-head">
         <Crumbs items={data.crumbs} />
@@ -50,7 +50,6 @@ export default function Study({ code }: { code: string }) {
             <Source show={showSources}>public.studies: study_code · protocol_id · title · phase · design · duration_weeks · protocol_version · consent_documents (master)</Source>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <span style={{ ...pillLink(false), color: "rgba(0,0,0,0.32)", cursor: "default" }} title="Coming soon">Documents</span>
             <AskButton question={`How is ${data.eyebrow.replace(/ study$/, "")} doing? (${code}) What needs attention?`} style={pillLink(true)}>Ask Trial Ops</AskButton>
           </div>
         </div>

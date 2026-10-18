@@ -27,7 +27,8 @@ export default function Journeys() {
   const [showSources, toggleSources] = useSources();
   // Opens on the participants who need attention, which stays short as studies are added.
   const [stalledOnly, setStalledOnly] = useState(true);
-  const [study, setStudy] = useState("all");
+  // A study's "Participant timelines" tab opens this page filtered to that study (?study=MX-101).
+  const [study, setStudy] = useState(() => new URLSearchParams(location.search).get("study") ?? "all");
   if (!data) return <Status error={error} notFound={notFound} onRetry={reload} what="journeys" />;
 
   const LO = data.firstDay, HI = 2, SPAN = HI - LO;

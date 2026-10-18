@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import type { Crumb, Lifecycle, Priorities, Tile } from "./types";
+import type { Crumb, Lifecycle, Priorities, StudyNav, Tile } from "./types";
 
 export type Mode = "classic" | "agentic";
 export const modeFromUrl = (): Mode => (new URLSearchParams(location.search).get("mode") === "agentic" ? "agentic" : "classic");
@@ -148,14 +148,12 @@ export function useApi<T>(url: string) {
 // Chrome
 // ---------------------------------------------------------------------------
 
-const NAV: Array<[string, string | null, (p: string) => boolean]> = [
-  ["Studies", "/studies", (p) => p.startsWith("/studies") || p.startsWith("/sites")],
-  ["Journeys", "/journeys", (p) => p.startsWith("/journeys")],
-  ["Reported data", "/reported", (p) => p.startsWith("/reported")],
+// Studies lead to their sites, then participants, then each participant's reported data.
+// Alerts and the calendar span every study.
+const NAV: Array<[string, string, (p: string) => boolean]> = [
+  ["Studies", "/studies", (p) => ["/studies", "/sites", "/participants", "/reported", "/journeys"].some((x) => p.startsWith(x))],
   ["Alerts", "/alerts", (p) => p.startsWith("/alerts")],
   ["Calendar", "/calendar", (p) => p.startsWith("/calendar")],
-  ["Messages", null, () => false],
-  ["Documents", null, () => false],
 ];
 
 export function Header({ path, mode, onMode, account, onSignOut }: {
@@ -188,14 +186,10 @@ export function Header({ path, mode, onMode, account, onSignOut }: {
         </a>
         {mode === "classic" ? (
           <div className="topnav-links">
-            {NAV.map(([label, href, isCurrent]) =>
-              href ? (
-                <a key={label} href={href} aria-current={isCurrent(path) ? "page" : undefined}
-                  style={{ ...link, fontWeight: isCurrent(path) ? 600 : undefined }}>{label}</a>
-              ) : (
-                <span key={label} style={{ ...link, color: "rgba(0,0,0,0.32)" }} title="Coming soon">{label}</span>
-              ),
-            )}
+            {NAV.map(([label, href, isCurrent]) => (
+              <a key={label} href={href} aria-current={isCurrent(path) ? "page" : undefined}
+                style={{ ...link, fontWeight: isCurrent(path) ? 600 : undefined }}>{label}</a>
+            ))}
           </div>
         ) : account ? (
           <div className="account">
@@ -221,28 +215,19 @@ export function Header({ path, mode, onMode, account, onSignOut }: {
   );
 }
 
-/** The second row of links on study and site pages. */
-export function StudyTabs({ current, studyHref, siteHref }: { current: "overview" | "sites"; studyHref: string; siteHref: string | null }) {
-  const tabs: Array<[string, string | null, boolean]> = [
-    ["Overview", studyHref, current === "overview"],
-    ["Sites", siteHref, current === "sites"],
-    ["Participants", "/journeys", false],
-    ["Data", "/reported", false],
-    ["Messages", null, false],
-    ["Alerts", "/alerts", false],
-    ["Documents", null, false],
-  ];
+/** A study's tabs: its overview, each of its sites, and its participant timelines. */
+export function StudyTabs({ nav, current }: { nav: StudyNav; current: string }) {
+  const tabs = [{ label: "Overview", href: nav.overview }, ...nav.sites, { label: "Participant timelines", href: nav.timelines }];
   return (
     <div style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
       <nav aria-label="Study" className="subnav">
-        {tabs.map(([label, href, on]) =>
-          href ? (
-            <a key={label} href={href} aria-current={on ? "page" : undefined}
-              style={{ display: "flex", alignItems: "center", minHeight: 44, textDecoration: "none", ...(on ? { color: INK, fontWeight: 600, boxShadow: `inset 0 -2px 0 ${INK}` } : { color: MUTED }) }}>{label}</a>
-          ) : (
-            <span key={label} title="Coming soon" style={{ display: "flex", alignItems: "center", minHeight: 44, color: "rgba(0,0,0,0.32)" }}>{label}</span>
-          ),
-        )}
+        {tabs.map((t) => {
+          const on = t.href === current;
+          return (
+            <a key={t.href} href={t.href} aria-current={on ? "page" : undefined}
+              style={{ display: "flex", alignItems: "center", minHeight: 44, textDecoration: "none", whiteSpace: "nowrap", ...(on ? { color: INK, fontWeight: 600, boxShadow: `inset 0 -2px 0 ${INK}` } : { color: MUTED }) }}>{t.label}</a>
+          );
+        })}
       </nav>
     </div>
   );
