@@ -44,6 +44,7 @@ export class OpsAgent {
   onLine(conversation: Conversation, text: string, externalId: string): void {
     void (async () => {
       const m = await store.managerByHandle(ops, conversation.handle);
+      console.log(`ops: text on ${config.ops.name}' line from ${m ? `manager ${m.displayName}` : "someone not linked"} (${text.length} characters)`);
       if (m) return this.onInbound(conversation, text, externalId, { dedicated: true });
       const last = this.turnedAway.get(conversation.handle) ?? 0;
       if (Date.now() - last < 86_400_000) return;
