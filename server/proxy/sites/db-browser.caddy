@@ -1,0 +1,6 @@
+# DB Browser: read-only viewer of every table in the clinical trial database (db-browser).
+# The app asks for its shared password itself.
+dbview.hackharvard2026.velroi.com, dbview.74-208-206-131.sslip.io {
+	encode zstd gzip
+	reverse_proxy db-browser:4321
+}

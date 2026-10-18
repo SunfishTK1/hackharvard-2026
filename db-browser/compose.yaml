@@ -1,0 +1,24 @@
+# DB Browser: read-only table viewer for the clinical trial database, behind the team login.
+# The proxy reaches it as db-browser:4321 on the `web` network; Postgres is clinical-db's `postgres`.
+# /opt/apps/db-browser/.env holds DATABASE_URL, BROWSER_USER and BROWSER_PASSWORD.
+services:
+  web:
+    build: .
+    image: db-browser
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    mem_limit: 128m
+    networks:
+      default:
+      web:
+        aliases: [db-browser]
+      clinical-db_default:
+
+networks:
+  web:
+    external: true
+  clinical-db_default:
+    external: true

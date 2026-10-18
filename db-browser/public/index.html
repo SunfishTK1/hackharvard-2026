@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DB Browser</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">▤</div>
+      <div><b>DB Browser</b><div class="meta" id="meta">Connecting…</div></div>
+    </div>
+    <input id="filter" class="filter" type="search" placeholder="Find a table" autocomplete="off">
+    <nav id="tables" class="tables"></nav>
+  </aside>
+  <main id="main" class="main">
+    <div class="empty">Pick a table on the left.</div>
+  </main>
+  <aside id="drawer" class="drawer" hidden></aside>
+</div>
+</body>
+</html>
