@@ -55,6 +55,8 @@ create table ops.messages (
   kind text not null default 'text' check (kind in ('text', 'card', 'event')),
   body text not null,
   external_id text unique,
+  -- A card in the chat: its view, title and mini-app URL, so every surface can show it.
+  link jsonb,
   created_at timestamptz not null default now()
 );
 create index on ops.messages (thread_id, created_at);
@@ -71,6 +73,24 @@ create table ops.cards (
   session jsonb,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default now() + interval '7 days'
+);
+
+-- Signing in to Trial Ops on the web (the ops website): a one-time link texted to the manager's
+-- phone, then a session. Only hashes of the tokens are kept.
+create table ops.web_signins (
+  token_hash text primary key,
+  manager_id uuid not null references ops.managers (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default now() + interval '15 minutes',
+  used_at timestamptz
+);
+create table ops.web_sessions (
+  token_hash text primary key,
+  manager_id uuid not null references ops.managers (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default now() + interval '7 days',
+  last_seen_at timestamptz not null default now(),
+  revoked_at timestamptz
 );
 
 create table ops.passkeys (
@@ -441,6 +461,7 @@ grant select on ops.staff, ops.studies, ops.sites, ops.participants, ops.consent
 grant select on ops.managers, ops.manager_staff to manager_agent;
 grant update (chat_mode) on ops.managers to manager_agent;
 grant select, insert, update on ops.threads, ops.messages, ops.cards, ops.passkeys to manager_agent;
+grant select, insert, update on ops.web_signins, ops.web_sessions to manager_agent;
 grant select, insert on ops.audit_events to manager_agent;
 grant select, insert, update on ops.computers, ops.analyses to manager_agent;
 grant select, insert on ops.analysis_files to manager_agent;

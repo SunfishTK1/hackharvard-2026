@@ -9,6 +9,8 @@ services:
         required: false
     environment:
       PORT: "3000"
+      PUBLIC_URL: https://ops.hackharvard2026.velroi.com
+      TRIAL_OPS_API_URL: http://patient-assistant:3012
     mem_limit: 160m
     networks:
       default:
