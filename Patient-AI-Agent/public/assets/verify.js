@@ -71,7 +71,8 @@ async function boot() {
       const response = mode === "register" ? await sw.startRegistration({ optionsJSON: options }) : await sw.startAuthentication({ optionsJSON: options });
       done(info, await call("verify", { response }));
     } catch (e) {
-      error.textContent = e.name === "NotAllowedError" ? "Face ID was cancelled. Tap the button to try again." : e.message;
+      error.textContent = (e.name === "NotAllowedError" ? "Face ID was cancelled or isn't set up on this phone. Tap the button to try again." : e.message)
+        + " If Face ID won't work, go back to the card in Messages and tap \"Can't use Face ID?\" to sign by typing your full name.";
       button.disabled = false;
     }
   } }, h("span", { html: icons.faceidBold, style: "display:contents" }), "Continue with Face ID");

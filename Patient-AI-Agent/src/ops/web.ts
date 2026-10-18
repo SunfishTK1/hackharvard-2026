@@ -16,6 +16,9 @@ import { analysisFile, fileHeaders, ViewError, viewJson } from "./views.ts";
 
 const PAGE = join(import.meta.dirname, "..", "..", "public", "ops.html");
 const TOKEN = /^[A-Za-z0-9_-]{32,64}$/;
+/** One Safari link per decision every few minutes; a repeat tap reuses it rather than texting again. */
+const HANDOFF_EVERY_MS = 3 * 60_000;
+const handoffs = new Map<string, number>();
 
 export function opsHttp(agent: OpsAgent | undefined, followUp: (handle: string, note: string) => Promise<boolean>) {
   return async function handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
@@ -87,8 +90,12 @@ export function opsHttp(agent: OpsAgent | undefined, followUp: (handle: string, 
           const a = need(await approvals.view(manager, uuid(String(body.id ?? ""))), "decision");
           if (a.status !== "pending") throw new HttpError(409, `That decision is already ${a.status}.`);
           if (note !== undefined) await approvals.setNote(manager, a.id, note);
-          const link = `${config.publicUrl}/o/${token}?approval=${a.id}`;
-          agent?.notify(manager.id, `Confirm with Face ID in Safari: ${link}`);
+          const link = `${config.publicUrl}/o/${token}?approval=${a.id}&via=safari`;
+          const last = handoffs.get(a.id) ?? 0;
+          if (Date.now() - last > HANDOFF_EVERY_MS) {
+            handoffs.set(a.id, Date.now());
+            agent?.notify(manager.id, `Confirm with Face ID in Safari: ${link}`);
+          }
           await store.audit(ops, manager.id, "approval_handoff", { approval_id: a.id }, meta);
           return json(res, 200, { url: link });
         }

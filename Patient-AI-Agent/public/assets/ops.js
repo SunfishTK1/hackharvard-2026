@@ -6,6 +6,9 @@
 // alerts) are prepared here or in chat, and only happen once the manager confirms with Face ID.
 import { actionbar, button, h, icons, optionsMenu, roundButton } from "./ui.js?v=10";
 
+/** Opened from the "Confirm with Face ID in Safari" link (read before the page rewrites its URL). */
+const OPENED_FROM_SAFARI_LINK = new URLSearchParams(location.search).get("via") === "safari";
+
 const app = document.getElementById("app");
 const dock = document.getElementById("dock");
 const token = location.pathname.split("/")[2];
@@ -974,6 +977,15 @@ function confirmScreen(a, alive) {
     }
   };
 
+  // The page opened from the Safari link: never send another link from here.
+  const inSafari = OPENED_FROM_SAFARI_LINK;
+  const offerOverride = (message) => {
+    error.textContent = message;
+    overrideLink.classList.add("hidden");
+    overrideBox.classList.remove("hidden");
+    nameInput.focus();
+  };
+
   confirm.onclick = async () => {
     const text = note?.value.trim() || null;
     if ((a.needsNote || a.kind === "decline_enrollment") && !text) {
@@ -983,8 +995,12 @@ function confirmScreen(a, alive) {
     }
     confirm.disabled = true;
     error.textContent = "";
+    if (inSafari && !(await faceIdHere()) && !window.PublicKeyCredential) {
+      confirm.disabled = false;
+      return offerOverride("Face ID isn't available in this browser. Confirm by typing your full name below.");
+    }
     try {
-      if (await faceIdHere()) {
+      if (inSafari || (await faceIdHere())) {
         const sw = window.SimpleWebAuthnBrowser;
         const { mode, options } = await api("approval/options", { id: a.id });
         const response = mode === "register" ? await sw.startRegistration({ optionsJSON: options }) : await sw.startAuthentication({ optionsJSON: options });
@@ -1002,8 +1018,9 @@ function confirmScreen(a, alive) {
       confirm.disabled = false;
       poll();
     } catch (e) {
-      error.textContent = e?.name === "NotAllowedError" ? "Face ID was cancelled." : e?.message || String(e);
       confirm.disabled = false;
+      if (inSafari) return offerOverride(e?.name === "NotAllowedError" ? "Face ID was cancelled or isn't set up on this phone. Try again, or confirm by typing your full name below." : `${e?.message || String(e)} You can confirm by typing your full name below.`);
+      error.textContent = e?.name === "NotAllowedError" ? "Face ID was cancelled." : e?.message || String(e);
     }
   };
 
