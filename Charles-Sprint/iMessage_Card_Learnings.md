@@ -86,7 +86,7 @@ They cover how cards render, how to update them in place, and what tripped us up
 
 ## First Light's brain (Claude)
 
-- Every text goes to Claude (`claude-sonnet-5-5`, low effort, about 2 to 4 s; set `AGENT_MODEL`, `AGENT_EFFORT`, `AGENT_THINKING` to change it). The system prompt in `src/brain.ts` has the persona, comedy rules, local material and the game rules. See `Comedy_Media_Learnings.md` for what made it funny, the model comparison, and the memes and voice notes.
+- Every text goes to Claude (`claude-haiku-5-5`, low effort, about 2 s; set `AGENT_MODEL`, `AGENT_EFFORT`, `AGENT_THINKING` to change it). The system prompt in `src/brain.ts` has the persona, comedy rules, local material and the game rules. See `Comedy_Media_Learnings.md` for what made it funny, the model comparison, and the memes and voice notes.
 - Claude attaches things through tools (`send_race_card`, `send_leaderboard`, `send_contact_card`, plus `send_meme_image`, `send_meme_video`, `send_voice_note`). The agent sends the text first, then the attachments. A chat without a race card always gets one.
 - Each request includes the current leaderboard and whether the chat has a card. History is the last 20 turns per chat, in memory only.
 - Race results are announced in First Light's voice (`brain.announce`), with confetti for course records.

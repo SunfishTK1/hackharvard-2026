@@ -181,7 +181,7 @@ export const App: React.FC = () => {
                   <div className="agent-loading-body">
                     <div className="agent-scan-bar" />
                     <div className="agent-loading-header">
-                      <span className="loading-kicker">PROD AGENT · SONNET 5.5</span>
+                      <span className="loading-kicker">PROD AGENT · HAIKU 5.5</span>
                       <h2 className="loading-title">“{submittedPrompt}”</h2>
                     </div>
                     <div className="skeleton-table">

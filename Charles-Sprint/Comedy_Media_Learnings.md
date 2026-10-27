@@ -27,8 +27,8 @@ Same messages through each model, on the server:
 
 | Model | Setting | Typical reply time | Humor |
 | --- | --- | --- | --- |
-| `claude-haiku-5-5` | low effort | ~1.8 s | Weak, generic |
-| `claude-sonnet-5-5` | low effort | ~2.2 to 3.7 s | Sharp, specific. **Default.** |
+| `claude-haiku-5-5` | low effort | ~1.8 s | Weak, generic. **Default** (the API key has a usage limit). |
+| `claude-sonnet-5-5` | low effort | ~2.2 to 3.7 s | Sharp, specific |
 | `claude-opus-5-5` | adaptive thinking | ~5.7 s | Good |
 | `claude-fable-5-1` | adaptive thinking | ~4.7 s, once 13.6 s | Funniest, but uneven and sometimes slow |
 

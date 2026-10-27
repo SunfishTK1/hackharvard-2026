@@ -62,7 +62,7 @@ flowchart LR
   S -->|cards| M["Mini-apps<br/>prescreen · consent · schedule · check-in"]
   M <-->|Grok Voice| X["xAI"]
   S -->|"platform rules · own DB role"| DB[("Postgres 18<br/>consent-first platform")]
-  T["Trial Ops<br/>Claude Opus 5.5"] -->|"views · approvals"| DB
+  T["Trial Ops<br/>Claude Haiku 5.5"] -->|"views · approvals"| DB
   S -->|escalations| T
   T <-->|Photon iMessage| I["Investigator<br/>iPhone"]
   T <-->|internal API| W["Ops website<br/>Classic · Agentic"]
@@ -92,7 +92,7 @@ Each folder's README covers how to run it. For the database, start with [databas
 
 ## Built with
 
-**Claude** (Anthropic: Haiku 5.5 for Sage, Opus 5.5 for Trial Ops and its analyst) · **Photon** Spectrum iMessage · **xAI** Grok Voice, speech-to-text and text-to-speech · **Daytona** sandboxes · **Resend** · PostgreSQL 18 · TypeScript and Node.js · React and Vite · WebAuthn passkeys · Swift (iOS Messages extension) · Docker and Caddy
+**Claude** (Anthropic: Haiku 5.5 for Sage, Trial Ops and its analyst) · **Photon** Spectrum iMessage · **xAI** Grok Voice, speech-to-text and text-to-speech · **Daytona** sandboxes · **Resend** · PostgreSQL 18 · TypeScript and Node.js · React and Vite · WebAuthn passkeys · Swift (iOS Messages extension) · Docker and Caddy
 
 ## Team
 

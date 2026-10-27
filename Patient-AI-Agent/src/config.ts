@@ -126,7 +126,7 @@ export const config = {
       if (url) return databaseUrl(url);
       return pick("OPS_USE_STAFF_DATABASE") === "1" ? config.staffDatabaseUrl : undefined;
     },
-    model: pick("OPS_MODEL") ?? "claude-opus-5-5",
+    model: pick("OPS_MODEL") ?? "claude-haiku-5-5",
     effort: (pick("OPS_EFFORT") ?? "low") as "low" | "medium" | "high",
     name: pick("OPS_NAME") ?? "Trial Ops",
     /**
@@ -159,7 +159,7 @@ export const config = {
     webOrigins: (pick("TRIAL_OPS_WEB_ORIGINS") ?? "https://ops.hackharvard2026.velroi.com,http://localhost:3000,http://localhost:5173")
       .split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
     /** The analyst that works on a Daytona computer for heavy analyses. */
-    analystModel: pick("OPS_ANALYST_MODEL") ?? "claude-opus-5-5",
+    analystModel: pick("OPS_ANALYST_MODEL") ?? "claude-haiku-5-5",
     analystEffort: (pick("OPS_ANALYST_EFFORT") ?? "medium") as "low" | "medium" | "high",
   },
   /**
